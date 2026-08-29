@@ -100,45 +100,66 @@ def existing_keys() -> set:
     return keys
 
 
-def pick_targets(args) -> list:
-    con = duckdb.connect(str(DB_PATH), read_only=True)
-    if args.codes:
-        q = f"""SELECT sec_code, name, formal_name FROM companies
-                WHERE sec_code IN ({','.join("'" + c + "'" for c in args.codes)})"""
-    elif args.all:
-        q = "SELECT sec_code, name, formal_name FROM companies"
-    else:
-        # 売上高の大きい順。日次で回す想定なので件数を絞る
-        q = f"""
-        SELECT c.sec_code, c.name, c.formal_name
-        FROM companies c
-        LEFT JOIN (
-            SELECT sec_code, max(TRY_CAST(Sales AS DOUBLE)) AS sales
-            FROM financials GROUP BY sec_code
-        ) f ON f.sec_code = c.sec_code
-        ORDER BY f.sales DESC NULLS LAST
-        LIMIT {int(args.top)}
-        """
-    df = con.execute(q).df()
+def load_universe() -> pd.DataFrame:
+    """対象になりうる企業の一覧と、優先度に使う規模の指標。
 
-    hot = set()
-    if args.hot:
-        hot = set(con.execute(f"""
-            SELECT c.sec_code FROM companies c
-            LEFT JOIN (SELECT sec_code, max(TRY_CAST(Sales AS DOUBLE)) s
-                       FROM financials GROUP BY sec_code) f USING (sec_code)
-            ORDER BY f.s DESC NULLS LAST LIMIT {int(args.hot)}
-        """).df().sec_code)
-    con.close()
+    倉庫があればそれを使うが、無くても EDINET コードリストだけで組めるようにしてある。
+    CI では倉庫はこのあとの手順で作られるうえ *.duckdb はコミットしていないので、
+    倉庫に依存させると実行順序に縛られてしまう。
+    """
+    if DB_PATH.exists():
+        con = duckdb.connect(str(DB_PATH), read_only=True)
+        tables = {t[0] for t in con.execute("SHOW TABLES").fetchall()}
+        if "financials" in tables:
+            df = con.execute("""
+                SELECT c.sec_code, c.name, c.formal_name,
+                       f.sales AS size_metric
+                FROM companies c
+                LEFT JOIN (SELECT sec_code, max(TRY_CAST(Sales AS DOUBLE)) AS sales
+                           FROM financials GROUP BY sec_code) f USING (sec_code)
+            """).df()
+        else:
+            # 公開版の倉庫には決算が入らないので、規模は資本金で代用する
+            df = con.execute("""
+                SELECT sec_code, name, formal_name,
+                       TRY_CAST(capital AS DOUBLE) AS size_metric
+                FROM companies
+            """).df()
+        con.close()
+        return df
+
+    snaps = sorted((ROOT / "data" / "edinet_codelist").glob("codelist_*.parquet"))
+    if not snaps:
+        print("❌ 倉庫も EDINETコードリストも見つかりません")
+        sys.exit(1)
+    cl = pd.read_parquet(snaps[-1])
+    cl = cl[(cl["上場区分"] == "上場") & cl["証券コード"].notna()]
+    return pd.DataFrame({
+        "sec_code": cl["証券コード"],
+        "name": cl["提出者名"],
+        "formal_name": cl["提出者名"],
+        "size_metric": pd.to_numeric(cl["資本金"], errors="coerce"),
+    }).drop_duplicates(subset=["sec_code"])
+
+
+def pick_targets(args) -> list:
+    df = load_universe()
+
+    if args.codes:
+        return list(df[df.sec_code.isin(args.codes)].itertuples(index=False))
+
+    ranked = df.sort_values("size_metric", ascending=False, na_position="last")
+    if not args.all:
+        return list(ranked.head(int(args.top)).itertuples(index=False))
+
+    hot = set(ranked.head(int(args.hot)).sec_code) if args.hot else set()
 
     if args.rotate and args.rotate > 1:
         # 証券コードで決まるスライスなので、同じ会社は必ず同じ曜日に当たる。
         # 乱数で選ぶと観測の間隔がばらつき、あとで時系列として扱いにくくなる。
         slot = dt.date.today().toordinal() % args.rotate
-        df = df[df.sec_code.map(lambda c: (int(c, 36) % args.rotate) == slot)
-                | df.sec_code.isin(hot)]
-    elif hot:
-        df = df[df.sec_code.isin(hot) | True]
+        keep = df.sec_code.map(lambda c: (int(str(c), 36) % args.rotate) == slot)
+        df = df[keep | df.sec_code.isin(hot)]
 
     return list(df.itertuples(index=False))
 
@@ -155,10 +176,6 @@ def main():
                     help="ローテーションとは別に、売上上位 M 社は毎日取る")
     ap.add_argument("--sleep", type=float, default=1.1)
     args = ap.parse_args()
-
-    if not DB_PATH.exists():
-        print("❌ 倉庫がありません。先に scripts/build_warehouse.py を実行してください")
-        sys.exit(1)
 
     targets = pick_targets(args)
     seen = existing_keys()
