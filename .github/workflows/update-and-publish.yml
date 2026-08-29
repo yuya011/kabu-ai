@@ -94,6 +94,12 @@ jobs:
           python scripts/build_warehouse.py --public
           python scripts/export_browser_json.py
 
+      # 取り込みに10分以上かかるので、その間に main が進んでいることがある。
+      # そのまま push すると non-fast-forward で弾かれ、取り込んだぶんが丸ごと無駄になる。
+      # rebase してから押し直す。
+      #
+      # なお、ここでの push は GITHUB_TOKEN によるものなので、
+      # data/** の push トリガーでこのワークフローが再帰的に起動することはない。
       - name: 取り込んだ生データをコミット
         run: |
           git config user.name  'github-actions[bot]'
@@ -101,10 +107,26 @@ jobs:
           git add -A data/news data/edinet_raw data/edinet_codelist
           if git diff --cached --quiet; then
             echo "更新なし"
-          else
-            git commit -m "chore: データ更新 $(date -u '+%Y-%m-%d')"
-            git push
+            exit 0
           fi
+          git commit -m "chore: データ更新 $(date -u '+%Y-%m-%d')"
+
+          for attempt in 1 2 3; do
+            if git push origin HEAD:"$BRANCH"; then
+              echo "push しました（$attempt 回目）"
+              exit 0
+            fi
+            echo "push が弾かれました。リモートを取り込んで再試行します（$attempt 回目）"
+            git pull --rebase --autostash origin "$BRANCH" || {
+              echo "::error::rebase に失敗しました。手元で解消してください"
+              exit 1
+            }
+            sleep $((attempt * 5))
+          done
+          echo "::error::3回試しても push できませんでした"
+          exit 1
+        env:
+          BRANCH: ${{ github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:
