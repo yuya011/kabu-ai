@@ -147,3 +147,27 @@ cd frontend && npm install && npm run dev
 
 手元で全部入りを見るときは `--public` を外してください。決算・サプライズ・検証ダッシュボードが有効になります。
 本リポジトリには J-Quants 由来のデータファイルを含めていません。
+
+## 🔄 更新の運用
+
+| 対象 | 実行場所 | 契機 |
+|---|---|---|
+| ニュース | GitHub Actions | 毎日 06:00 JST（全上場を7日で一周・約11分） |
+| 有価証券報告書 | **手元のマシン** | 年数回、手動または cron |
+| サイトの再生成と公開 | GitHub Actions | 上記のどちらかが更新されたとき |
+
+**有報の取り込みだけは GitHub Actions で動きません。**
+EDINET API はランナー（Azure のデータセンター IP）からのアクセスを 403 で拒否します。
+鍵の有無とは無関係で、鍵を渡さなくても手元からは 200 が返る一方、CI からは全日付が 403 になります。
+
+```bash
+bash scripts/update_edinet_local.sh    # 取り込み → 倉庫再構築 → 書き出し → push
+```
+
+push を契機に GitHub Actions が動き、サイトが作り直されます。
+自動化するなら、有報の提出が集中する時期に合わせて crontab に1行入れておくのが手軽です。
+
+```cron
+# 1/4/7/10月の1日 朝5時
+0 5 1 1,4,7,10 * cd /path/to/kabu-ai && bash scripts/update_edinet_local.sh >> data/edinet_raw/quarterly.log 2>&1
+```
