@@ -1,0 +1,40 @@
+.env
+.venv/
+*.log
+.DS_Store
+__pycache__/
+
+# EDINET/データ取り込みのローカルキャッシュ（再取得可能・巨大）
+data/edinet_cache/
+data/edinet_raw/doclist/
+data/edinet_affiliates/html_cache/
+data/edinet_affiliates/csv_cache/
+*.duckdb
+
+# 生成物（scripts/export_browser_json.py で作り直せる）
+frontend/public/data/browser/
+frontend/dist/
+# 密度調査の中間生成物
+data/edinet_affiliates/
+data/edinet_raw/*.bak-*
+
+# J-Quants 由来のデータ。規約により第三者が閲覧できる状態に置けない。
+# 私的利用の範囲で手元にのみ保持する。
+data/master.parquet
+data/fins_summary.parquet
+data/fins_extended.parquet
+data/benchmark_dataset.parquet
+data/extended_clean_dataset.parquet
+data/pure_after_close_dataset.parquet
+data/llm_features_cache.parquet
+data/llm_features_extended_cache.parquet
+
+# 依存パッケージ
+node_modules/
+
+# 旧ダッシュボードの配信データ。J-Quants 由来の銘柄別サプライズ・リターンを含む
+frontend/public/data/dashboard_data.json
+ui/dashboard_data.json
+
+# 検証の集計結果（J-Quants の派生物）
+results/

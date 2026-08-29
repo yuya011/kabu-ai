@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 画面ごとに配色が違うので、body には地の色を置かない。
+   企業ブラウザは Apple のセマンティックカラー、検証ダッシュボードは自前の紺を各ルートで塗る。 */
+html, body, #root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: Canvas;
+  color: CanvasText;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Hiragino Sans',
+    'Hiragino Kaku Gothic ProN', 'Segoe UI', 'Noto Sans JP', sans-serif;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #090d16;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #1f293d;
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
