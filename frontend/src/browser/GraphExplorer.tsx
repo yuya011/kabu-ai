@@ -4,9 +4,10 @@ import {
   Search, X, ArrowLeft, ExternalLink, FileText, LineChart,
   Globe, Network, Loader2, Building2, Newspaper, ChevronsLeft, ChevronsRight,
   SlidersHorizontal, CornerDownRight, Route, Crosshair, Sparkles, Check,
+  ScrollText, Info,
 } from 'lucide-react';
 import './apple.css';
-import type { Detail } from './types';
+import type { Detail, TradeRelation } from './types';
 import {
   AdjStore, buildEgo, shortestPath, findPath, linkKey,
   type GNode, type GLink, type NodeRec, type Hop,
@@ -70,6 +71,11 @@ function Favi({ domain, name, color, size = 22 }: {
     </span>
   );
 }
+
+/** 保有目的から読める取引の性質。番号は書き出し側と合わせてある */
+const REL_NAME: Record<number, string> = {
+  1: '仕入先', 2: '販売先', 3: '業務提携', 4: '金融取引',
+};
 
 /* ---------------- 検索起点のトップ ---------------- */
 function Launch({ catalog, onPick, onOpenBrowser }: {
@@ -158,9 +164,50 @@ function Launch({ catalog, onPick, onOpenBrowser }: {
                 業種から一覧で探す
               </button>
             </div>
+
+            {/* 公共データ利用規約(PDL1.0)は出典と、加工した旨の明記を求めている */}
+            <div className="ap-footnote" style={{ textAlign: 'center', marginTop: 34, lineHeight: 1.7 }}>
+              <Info size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
+              出典：<a href="https://disclosure2.edinet-fsa.go.jp/" target="_blank" rel="noreferrer"
+                style={{ color: 'var(--blue)' }}>EDINET閲覧サイト</a>（金融庁）、
+              <a href="https://disclosure2dl.edinet-fsa.go.jp/guide/static/submit/WZEK0030.html"
+                target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>PDL1.0</a>
+              <br />
+              有価証券報告書の政策保有株・大株主・主要な顧客・株式事務の記載をもとに作成
+            </div>
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** 取引1件の行。方向は企業自身の記載から読んだもので、こちらで推測していない。 */
+function TradeRow({ rel, onClick }: { rel: TradeRelation; onClick?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const tone = rel.direction === '仕入先' ? 'ap-badge-blue'
+    : rel.direction === '販売先' ? 'ap-badge-red' : 'ap-badge-green';
+  return (
+    <div className="ap-row" data-tap={!!onClick}
+      style={{ padding: '8px 16px', flexDirection: 'column', alignItems: 'stretch', gap: 3 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        <span className={`ap-badge ${tone}`} style={{ flex: '0 0 auto' }}>{rel.direction}</span>
+        <span className="ap-body" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'default' }}
+          onClick={onClick}>
+          {rel.name}
+        </span>
+        {rel.segment && <span className="ap-badge">{rel.segment}</span>}
+        {rel.amount != null && (
+          <span className="ap-num sec" style={{ marginLeft: 'auto', fontSize: 11 }}>{oku(rel.amount)}</span>
+        )}
+      </div>
+      {rel.note && (
+        <div className="ap-footnote ap-purpose" data-open={open}
+          onClick={() => setOpen((v) => !v)} title={open ? '閉じる' : '全文を開く'}>
+          「{rel.note}」
+        </div>
+      )}
+      <div className="ap-caption">{rel.source}</div>
     </div>
   );
 }
@@ -238,7 +285,9 @@ function PathTrace({ hops, catalog, center, purposeOf, onPick }: {
             <div className="ap-path-edge" data-kind={h.link.kind} data-mutual={h.link.mutual}>
               <div className="ap-path-tag">
                 <CornerDownRight size={11} />
-                {h.link.kind === 'major'
+                {h.link.kind === 'trade'
+                  ? `${holderName} の主要な売上先が ${heldName}`
+                  : h.link.kind === 'major'
                   ? `${holderName} が ${heldName} の大株主`
                   : `${holderName} が ${heldName} を政策保有`}
                 {h.link.mutual && <span className="ap-badge ap-badge-blue">持ち合い</span>}
@@ -373,6 +422,37 @@ function Inspector({ code, catalog, detail, onClose, onCenter, wide, onToggleWid
               </>
             )}
 
+            {detail.filings?.length > 0 && (
+              <>
+                <div className="ap-sidebar-label" style={{ padding: '14px 16px 5px' }}>
+                  最近の開示（EDINET）
+                </div>
+                {detail.filings.slice(0, 6).map((f, i) => (
+                  <a key={i} className="ap-linkbtn"
+                    href={`https://disclosure2dl.edinet-fsa.go.jp/searchdocument/pdf/${f.doc_id}.pdf`}
+                    target="_blank" rel="noreferrer" style={{ alignItems: 'flex-start', gap: 9 }}>
+                    <ScrollText size={13} className="sec" style={{ marginTop: 2, flex: '0 0 13px' }} />
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: 'block', lineHeight: 1.4 }}>{f.title}</span>
+                      <span className="ap-footnote">{f.submitted}</span>
+                    </span>
+                  </a>
+                ))}
+              </>
+            )}
+
+            {detail.trade?.length > 0 && (
+              <>
+                <div className="ap-sidebar-label" style={{ padding: '14px 16px 5px' }}>
+                  取引関係 {detail.trade.length}
+                </div>
+                {detail.trade.slice(0, 12).map((t, i) => (
+                  <TradeRow key={i} rel={t}
+                    onClick={t.code ? () => onCenter(t.code!) : undefined} />
+                ))}
+              </>
+            )}
+
             {detail.holdings.length > 0 && (
               <>
                 <div className="ap-sidebar-label" style={{ padding: '14px 16px 5px' }}>
@@ -423,7 +503,9 @@ function EdgeTip({ link, catalog, x, y, lookup }: {
         {s.name} <span className="ter">→</span> {t.name}
       </div>
       <div className="ap-footnote">
-        {link.kind === 'major' ? '大株主として記載' : link.mutual ? '政策保有（持ち合い）' : '政策保有'}
+        {link.kind === 'trade' ? '主要な取引（売上先）'
+          : link.kind === 'major' ? '大株主として記載'
+          : link.mutual ? '政策保有（持ち合い）' : '政策保有'}
         {link.value != null && ` · ${oku(link.value)}円`}
       </div>
       {purpose && (
@@ -436,10 +518,13 @@ function EdgeTip({ link, catalog, x, y, lookup }: {
 }
 
 /** ホップ数・エッジ種別・密度。狭い画面では折り畳んだ中に入る。 */
-function Controls({ depth, setDepth, hold, setHold, major, setMajor, perNode, setPerNode }: {
+function Controls({ depth, setDepth, hold, setHold, major, setMajor,
+  trade, setTrade, colorBy, setColorBy, perNode, setPerNode }: {
   depth: 1 | 2; setDepth: (d: 1 | 2) => void;
   hold: boolean; setHold: (f: (v: boolean) => boolean) => void;
   major: boolean; setMajor: (f: (v: boolean) => boolean) => void;
+  trade: boolean; setTrade: (f: (v: boolean) => boolean) => void;
+  colorBy: 'capital' | 'trade'; setColorBy: (v: 'capital' | 'trade') => void;
   perNode: number; setPerNode: (n: number) => void;
 }) {
   return (
@@ -459,7 +544,18 @@ function Controls({ depth, setDepth, hold, setHold, major, setMajor, perNode, se
         <Tip tip="有報の「大株主の状況」で上位に名前がある関係">
           <button className="ap-seg" data-on={major} onClick={() => setMajor((v) => !v)}>大株主</button>
         </Tip>
+        <Tip tip="有報の「主要な顧客ごとの情報」。売上の10%以上を占める顧客に開示義務がある">
+          <button className="ap-seg" data-on={trade} onClick={() => setTrade((v) => !v)}>取引</button>
+        </Tip>
       </div>
+      <Tip tip="同じ辺を、資本の種別で塗るか、有報の保有目的から読める取引の性質で塗るか">
+        <div className="ap-segmented">
+          <button className="ap-seg" data-on={colorBy === 'capital'}
+            onClick={() => setColorBy('capital')}>資本で見る</button>
+          <button className="ap-seg" data-on={colorBy === 'trade'}
+            onClick={() => setColorBy('trade')}>取引で見る</button>
+        </div>
+      </Tip>
       <Tip tip="1社から何本まで辿るか。三菱UFJのように754社から保有される銘柄があるため上限が要る">
         <label className="ap-footnote" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           密度
@@ -480,6 +576,9 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
   const [depth, setDepth] = useState<1 | 2>(1);
   const [hold, setHold] = useState(true);
   const [major, setMajor] = useState(true);
+  const [trade, setTrade] = useState(true);
+  /* 同じ辺を『資本の種別』で塗るか『取引の性質』で塗るか */
+  const [colorBy, setColorBy] = useState<'capital' | 'trade'>('capital');
   const [perNode, setPerNode] = useState(10);
   const [data, setData] = useState<{ nodes: GNode[]; links: GLink[] } | null>(null);
   const [truncated, setTruncated] = useState(false);
@@ -589,7 +688,7 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
     let cancelled = false;
     setBusy(true);
     buildEgo(center, catalog, store.current,
-      { depth, hold, major, perNode, maxNodes: 220 })
+      { depth, hold, major, trade, perNode, maxNodes: 220 })
       .then((g) => {
         if (cancelled) return;
         setData({ nodes: g.nodes, links: g.links });
@@ -597,7 +696,7 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
         setBusy(false);
       });
     return () => { cancelled = true; };
-  }, [center, catalog, depth, hold, major, perNode]);
+  }, [center, catalog, depth, hold, major, trade, perNode]);
 
   /** 企業シャードを1度だけ取り、その会社の保有目的をまとめて控える。 */
   const loadShard = useCallback(async (code: string) => {
@@ -750,9 +849,17 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
   const palette = dark
     ? { label: '#fff', sub: 'rgba(235,235,245,0.65)', hold: 'rgba(10,132,255,0.42)',
         major: 'rgba(255,159,10,0.5)', mutual: 'rgba(50,215,75,0.5)',
+        trade: 'rgba(255,55,95,0.5)',
+        rel: { 1: 'rgba(191,90,242,0.62)', 2: 'rgba(255,55,95,0.58)',
+               3: 'rgba(50,215,75,0.58)', 4: 'rgba(255,159,10,0.55)',
+               0: 'rgba(120,120,128,0.22)' } as Record<number, string>,
         path: '#5e5ce6', ring: '#1c1c1e', halo: 'rgba(28,28,30,0.82)' }
     : { label: '#000', sub: 'rgba(60,60,67,0.7)', hold: 'rgba(0,122,255,0.34)',
         major: 'rgba(255,149,0,0.45)', mutual: 'rgba(52,199,89,0.5)',
+        trade: 'rgba(255,45,85,0.45)',
+        rel: { 1: 'rgba(175,82,222,0.6)', 2: 'rgba(255,45,85,0.55)',
+               3: 'rgba(52,199,89,0.55)', 4: 'rgba(255,149,0,0.5)',
+               0: 'rgba(120,120,128,0.18)' } as Record<number, string>,
         path: '#5856d6', ring: '#fff', halo: 'rgba(255,255,255,0.86)' };
 
   const centerRec = catalog.get(center)!;
@@ -777,11 +884,26 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
             cooldownTicks={90}
             d3VelocityDecay={0.32}
             onEngineStop={() => refit(420)}
-            linkColor={(l: any) => (pathKeys.has(linkKey(l)) ? palette.path
-              : l.kind === 'major' ? palette.major
-              : l.mutual ? palette.mutual : palette.hold)}
-            linkWidth={(l: any) => (pathKeys.has(linkKey(l)) ? 3.4
-              : l === hoverLink ? 3 : l.kind === 'major' ? 1 : l.mutual ? 1.8 : 1.1)}
+            linkColor={(l: any) => {
+              if (pathKeys.has(linkKey(l))) return palette.path;
+              if (colorBy === 'trade') {
+                // 取引の性質で塗る。政策保有以外は商流の情報を持たないので薄く沈める
+                if (l.kind === 'trade') return palette.rel[2];
+                if (l.kind === 'hold') return palette.rel[l.rel ?? 0];
+                return palette.rel[0];
+              }
+              return l.kind === 'trade' ? palette.trade
+                : l.kind === 'major' ? palette.major
+                : l.mutual ? palette.mutual : palette.hold;
+            }}
+            linkWidth={(l: any) => {
+              if (pathKeys.has(linkKey(l))) return 3.4;
+              if (l === hoverLink) return 3;
+              if (colorBy === 'trade') {
+                return (l.kind === 'trade' || (l.kind === 'hold' && l.rel)) ? 1.9 : 0.8;
+              }
+              return l.kind === 'trade' ? 1.6 : l.kind === 'major' ? 1 : l.mutual ? 1.8 : 1.1;
+            }}
             onLinkHover={(l: any) => {
               setHoverLink(l);
               if (l && l.kind === 'hold') {
@@ -887,7 +1009,7 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
               </Tip>
             ) : (
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-                <Controls {...{ depth, setDepth, hold, setHold, major, setMajor, perNode, setPerNode }} />
+                <Controls {...{ depth, setDepth, hold, setHold, major, setMajor, trade, setTrade, colorBy, setColorBy, perNode, setPerNode }} />
                 <div className="ap-search" style={{ minWidth: 168 }}>
                   <Search size={13} className="ter" />
                   <input value={query} placeholder="関係を調べる会社"
@@ -910,7 +1032,7 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
 
           {compact && showControls && (
             <div className="ap-tb-row ap-tb-wrap">
-              <Controls {...{ depth, setDepth, hold, setHold, major, setMajor, perNode, setPerNode }} />
+              <Controls {...{ depth, setDepth, hold, setHold, major, setMajor, trade, setTrade, colorBy, setColorBy, perNode, setPerNode }} />
             </div>
           )}
 
@@ -940,15 +1062,31 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
 
         {/* 凡例 */}
         <div className="ap-float ap-graph-legend">
-          <div className="ap-legend-row">
-            <span className="ap-legend-line" style={{ background: palette.hold }} /> 政策保有（保有する側 → される側）
-          </div>
-          <div className="ap-legend-row">
-            <span className="ap-legend-line" style={{ background: palette.mutual }} /> 政策保有のうち持ち合い（相互保有）
-          </div>
-          <div className="ap-legend-row">
-            <span className="ap-legend-line" style={{ background: palette.major }} /> 大株主として記載
-          </div>
+          {colorBy === 'trade' ? (
+            <>
+              {[1, 2, 3, 4].map((k) => (
+                <div key={k} className="ap-legend-row">
+                  <span className="ap-legend-line" style={{ background: palette.rel[k] }} /> {REL_NAME[k]}
+                </div>
+              ))}
+              <div className="ap-legend-row ter">有報の保有目的に書かれている関係のみ</div>
+            </>
+          ) : (
+            <>
+              <div className="ap-legend-row">
+                <span className="ap-legend-line" style={{ background: palette.hold }} /> 政策保有（保有する側 → される側）
+              </div>
+              <div className="ap-legend-row">
+                <span className="ap-legend-line" style={{ background: palette.mutual }} /> 政策保有のうち持ち合い（相互保有）
+              </div>
+              <div className="ap-legend-row">
+                <span className="ap-legend-line" style={{ background: palette.trade }} /> 取引（売上先 ← 売る側）
+              </div>
+              <div className="ap-legend-row">
+                <span className="ap-legend-line" style={{ background: palette.major }} /> 大株主として記載
+              </div>
+            </>
+          )}
           {path && path.length > 0 && (
             <div className="ap-legend-row">
               <span className="ap-legend-line" style={{ background: palette.path, height: 3 }} /> 中心から選択中の会社への経路

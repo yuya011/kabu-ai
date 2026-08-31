@@ -1,9 +1,13 @@
 # データを更新して GitHub Pages に公開する。
 #
 # 走らせ方は3通り。
-#   ・毎日 06:00 JST      … ニュース。全上場を7日で一周する（1日あたり約560社・11分）
+#   ・毎日 06:00 JST      … サイトの作り直し（データは手元で更新して push する）
 #   ・data/** への push   … 手元で有報を取り込んで push したときに作り直す
 #   ・手動                … Run workflow から
+#
+# ニュースの収集はここでは行わない。Google ニュースは利用規約が
+# robot による取得・再表示・商用利用を禁じており、robots.txt も /rss/ を
+# Disallow にしている。手元での私的利用に留め、配信物には含めない。
 #
 # 有価証券報告書はここでは取り込めない。EDINET API は GitHub Actions のランナー
 # （Azure のデータセンター IP）からのアクセスを 403 で拒否する。鍵の有無とは無関係で、
@@ -28,10 +32,6 @@ on:
         description: '有報の取り込みも試す（CI からは 403 で失敗する。通常はオフ）'
         type: boolean
         default: false
-      news:
-        description: 'ニュースを取り込む'
-        type: boolean
-        default: true
 
 permissions:
   contents: write
@@ -45,7 +45,6 @@ concurrency:
 
 env:
   EDINET_RUN: ${{ inputs.edinet == true }}
-  NEWS_RUN: ${{ github.event_name == 'schedule' || inputs.news == true }}
 
 jobs:
   update:
@@ -80,10 +79,6 @@ jobs:
         env:
           EDINET_API: ${{ secrets.EDINET_API }}
         run: python scripts/edinet_ingest.py --months 14
-
-      - name: ニュースの取り込み
-        if: env.NEWS_RUN == 'true'
-        run: python scripts/news_ingest.py --all --rotate 7 --hot 200
 
       # --public で J-Quants 由来（決算・サプライズ・市場区分・TOPIX規模区分）を外す。
       # J-Quants の規約は「本データを第三者が閲覧できる状態」を私的利用と認めておらず、
@@ -130,7 +125,7 @@ jobs:
         run: |
           git config user.name  'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add -A data/news data/edinet_raw data/edinet_codelist
+          git add -A data/edinet_raw data/edinet_codelist
           if git diff --cached --quiet; then
             echo "更新なし"
             exit 0

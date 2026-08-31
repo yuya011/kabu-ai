@@ -44,6 +44,12 @@ for _d in (CODELIST_DIR, CACHE_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 ELEM_AFFILIATE = "jpcrp_cor:OverviewOfAffiliatedEntitiesTextBlock"
+# 「主要な顧客ごとの情報」。売上の10%以上を占める顧客に開示義務があり、金額も載る。
+# 顧客は XBRL の軸として切られていないため、テキストブロックの表を読むしかない。
+ELEM_CUSTOMERS = (
+    "jpcrp_cor:InformationForEachOfMainCustomersTextBlock",
+    "jpigp_cor:InformationAboutMajorCustomersIFRSTextBlock",
+)
 ELEM_HOLDING_NAME = "NameOfSecuritiesDetailsOfSpecifiedInvestmentEquitySecurities"
 ELEM_HOLDING_SHARES = "NumberOfSharesHeldDetailsOfSpecifiedInvestmentEquitySecurities"
 ELEM_HOLDING_VALUE = "BookValueDetailsOfSpecifiedInvestmentEquitySecurities"
@@ -305,6 +311,77 @@ def extract_shareholders(rows: list) -> list:
         m = re.search(r"No(\d+)", ctx)
         out.append({"rank": int(m.group(1)) if m else None, "raw_name": val})
     out.sort(key=lambda x: x["rank"] if x["rank"] is not None else 99)
+    return out
+
+
+def fetch_xbrl_fragments(doc_id: str, elements) -> dict:
+    """type=1 の XBRL から、指定した要素の HTML 断片をまとめて取り出す。
+
+    CSV 出力は表組みを1本の文字列に潰してしまうため、行を復元したい節は
+    XBRL 側のエスケープされた HTML を読む。1回の取得で複数の節を拾い、
+    節ごとにキャッシュするので、後から別の節が欲しくなっても再取得が要らない。
+    """
+    want = {e: CACHE_DIR / f"{doc_id}.{e.split(':')[-1]}.html" for e in elements}
+    out = {e: p.read_text(encoding="utf-8") for e, p in want.items() if p.exists()}
+    missing = [e for e in elements if e not in out]
+    if not missing:
+        return out
+
+    try:
+        z = zipfile.ZipFile(io.BytesIO(_download(doc_id, 1)))
+    except Exception:
+        return out
+
+    body = ""
+    for name in z.namelist():
+        if name.endswith(".xbrl") and "PublicDoc" in name:
+            body = z.read(name).decode("utf-8", errors="replace")
+            break
+    for e in missing:
+        # 同じ要素が前期と当期の2つ存在することがある（主要な顧客ごとの情報など）。
+        # 素朴に最初の一致を取ると前期を掴んでしまうので、contextRef で当期を選ぶ。
+        best, best_rank = "", -1
+        for m in re.finditer(rf"<{e}([^>]*)>(.*?)</{e}>", body, re.S):
+            ctx = re.search(r'contextRef="([^"]+)"', m.group(1))
+            ref = ctx.group(1) if ctx else ""
+            rank = 2 if ref.startswith("CurrentYear") else (0 if ref.startswith("Prior") else 1)
+            if rank > best_rank:
+                best, best_rank = m.group(2), rank
+        frag = html.unescape(best)
+        want[e].write_text(frag, encoding="utf-8")
+        out[e] = frag
+    return out
+
+
+def extract_customers(frag: str) -> list:
+    """主要な顧客ごとの情報。表の行から 顧客名 / 売上高 / セグメント を取る。"""
+    if not frag:
+        return []
+    soup = BeautifulSoup(frag, "html.parser")
+    # 単位は表の見出しか直前の文に「（千円）」「（百万円）」として書かれる
+    head = soup.get_text(" ", strip=True)[:400]
+    scale = 1_000_000 if "百万円" in head else (1_000 if "千円" in head else 1)
+    out = []
+    for table in soup.find_all("table"):
+        for tr in table.find_all("tr"):
+            cells = [td.get_text(" ", strip=True) for td in tr.find_all(["td", "th"])]
+            cells = [c for c in cells if c]
+            if len(cells) < 2:
+                continue
+            name = cells[0]
+            if not name or "顧客の名称" in name or "名称又は氏名" in name:
+                continue  # 見出し行
+            amount = None
+            for c in cells[1:]:
+                t = c.replace(",", "").replace("△", "-").strip()
+                if re.fullmatch(r"-?\d+(\.\d+)?", t):
+                    amount = float(t)
+                    break
+            segment = cells[-1] if len(cells) >= 3 and not re.fullmatch(
+                r"[\d,.\s-]+", cells[-1]) else None
+            out.append({"raw_name": name,
+                        "amount": None if amount is None else amount * scale,
+                        "segment": segment})
     return out
 
 

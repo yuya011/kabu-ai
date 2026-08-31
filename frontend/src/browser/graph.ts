@@ -9,11 +9,14 @@ export interface NodeRec {
 }
 
 export interface Adj {
-  /** [相手コード, 貸借対照表計上額, 持ち合いなら1] */
-  ho: [string, number | null, number][]; // 政策保有している先
-  hi: [string, number | null, number][]; // 政策保有されている元
-  mo: string[];                  // 大株主として名を連ねている先
-  mi: string[];                  // 大株主に入っている上場企業
+  /** [相手コード, 貸借対照表計上額, 持ち合いなら1, 取引の性質(0..4)] */
+  ho: [string, number | null, number, number?][]; // 政策保有している先
+  hi: [string, number | null, number, number?][]; // 政策保有されている元
+  mo: string[];                          // 大株主として名を連ねている先
+  mi: string[];                          // 大株主に入っている上場企業
+  /** [相手コード, 売上高] 有報「主要な顧客ごとの情報」より */
+  co?: [string, number | null][];        // 主要顧客として挙げている先
+  ci?: [string, number | null][];        // この会社を主要顧客に挙げている元
 }
 
 export interface GNode {
@@ -26,7 +29,7 @@ export interface GNode {
   degree: number;
 }
 
-export type EdgeKind = 'hold' | 'major';
+export type EdgeKind = 'hold' | 'major' | 'trade';
 
 export interface GLink {
   source: string;
@@ -35,12 +38,15 @@ export interface GLink {
   value: number | null;
   /** 相手も自社株を持っている（有報の「発行者による提出会社の株式の保有の有無」） */
   mutual: boolean;
+  /** 保有目的から読める取引の性質。1=仕入先 2=販売先 3=業務提携 4=金融取引 */
+  rel?: number;
 }
 
 export interface EgoOptions {
   depth: 1 | 2;
   hold: boolean;
   major: boolean;
+  trade: boolean;
   /** 1ノードあたりに展開する隣接数の上限。三菱UFJのように754社から保有される銘柄があるため必須 */
   perNode: number;
   /** グラフ全体のノード上限 */
@@ -88,9 +94,10 @@ export async function buildEgo(
   const linkMap = new Map<string, GLink>();
   let truncated = false;
 
-  const addLink = (s: string, t: string, kind: EdgeKind, value: number | null, mutual = false) => {
+  const addLink = (s: string, t: string, kind: EdgeKind, value: number | null,
+                   mutual = false, rel = 0) => {
     const key = `${s}>${t}>${kind}`;
-    if (!linkMap.has(key)) linkMap.set(key, { source: s, target: t, kind, value, mutual });
+    if (!linkMap.has(key)) linkMap.set(key, { source: s, target: t, kind, value, mutual, rel });
   };
 
   let frontier = [center];
@@ -113,14 +120,19 @@ export async function buildEgo(
         return true;
       };
       if (opt.hold) {
-        for (const [o, v, mu] of a.ho.slice(0, cap)) if (touch(o)) addLink(c, o, 'hold', v, !!mu);
-        for (const [o, v, mu] of a.hi.slice(0, cap)) if (touch(o)) addLink(o, c, 'hold', v, !!mu);
+        for (const [o, v, mu, rl] of a.ho.slice(0, cap)) if (touch(o)) addLink(c, o, 'hold', v, !!mu, rl ?? 0);
+        for (const [o, v, mu, rl] of a.hi.slice(0, cap)) if (touch(o)) addLink(o, c, 'hold', v, !!mu, rl ?? 0);
         if (a.ho.length > cap || a.hi.length > cap) truncated = true;
       }
       if (opt.major) {
         for (const o of a.mo.slice(0, cap)) if (touch(o)) addLink(c, o, 'major', null);
         for (const o of a.mi.slice(0, cap)) if (touch(o)) addLink(o, c, 'major', null);
         if (a.mo.length > cap || a.mi.length > cap) truncated = true;
+      }
+      if (opt.trade) {
+        for (const [o, v] of (a.co ?? []).slice(0, cap)) if (touch(o)) addLink(c, o, 'trade', v);
+        for (const [o, v] of (a.ci ?? []).slice(0, cap)) if (touch(o)) addLink(o, c, 'trade', v);
+        if ((a.co ?? []).length > cap || (a.ci ?? []).length > cap) truncated = true;
       }
     }
     frontier = next;
@@ -132,8 +144,9 @@ export async function buildEgo(
   for (const c of depthOf.keys()) {
     const a = store.get(c);
     if (!a) continue;
-    if (opt.hold) for (const [o, v, mu] of a.ho) if (depthOf.has(o)) addLink(c, o, 'hold', v, !!mu);
+    if (opt.hold) for (const [o, v, mu, rl] of a.ho) if (depthOf.has(o)) addLink(c, o, 'hold', v, !!mu, rl ?? 0);
     if (opt.major) for (const o of a.mo) if (depthOf.has(o)) addLink(c, o, 'major', null);
+    if (opt.trade) for (const [o, v] of (a.co ?? [])) if (depthOf.has(o)) addLink(c, o, 'trade', v);
   }
 
   const degree = new Map<string, number>();
@@ -242,14 +255,18 @@ export async function findPath(
     const a = store.get(c);
     const out: { other: string; link: GLink; forward: boolean }[] = [];
     if (!a) return out;
-    for (const [o, v, mu] of a.ho) if (catalog.has(o))
-      out.push({ other: o, forward: true, link: { source: c, target: o, kind: 'hold', value: v, mutual: !!mu } });
-    for (const [o, v, mu] of a.hi) if (catalog.has(o))
-      out.push({ other: o, forward: false, link: { source: o, target: c, kind: 'hold', value: v, mutual: !!mu } });
+    for (const [o, v, mu, rl] of a.ho) if (catalog.has(o))
+      out.push({ other: o, forward: true, link: { source: c, target: o, kind: 'hold', value: v, mutual: !!mu, rel: rl ?? 0 } });
+    for (const [o, v, mu, rl] of a.hi) if (catalog.has(o))
+      out.push({ other: o, forward: false, link: { source: o, target: c, kind: 'hold', value: v, mutual: !!mu, rel: rl ?? 0 } });
     for (const o of a.mo) if (catalog.has(o))
       out.push({ other: o, forward: true, link: { source: c, target: o, kind: 'major', value: null, mutual: false } });
     for (const o of a.mi) if (catalog.has(o))
       out.push({ other: o, forward: false, link: { source: o, target: c, kind: 'major', value: null, mutual: false } });
+    for (const [o, v] of (a.co ?? [])) if (catalog.has(o))
+      out.push({ other: o, forward: true, link: { source: c, target: o, kind: 'trade', value: v, mutual: false } });
+    for (const [o, v] of (a.ci ?? [])) if (catalog.has(o))
+      out.push({ other: o, forward: false, link: { source: o, target: c, kind: 'trade', value: v, mutual: false } });
     return out;
   };
 

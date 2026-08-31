@@ -149,6 +149,8 @@ def main():
 
     print("▸ EDINET 取り込み")
     register("holdings", read_jsonl(RAW / "holdings.jsonl"))
+    # 有報「主要な顧客ごとの情報」。売上の10%以上を占める顧客に開示義務がある
+    register("customers", read_jsonl(RAW / "customers.jsonl"))
     register("shareholders", read_jsonl(RAW / "shareholders.jsonl"))
     register("affiliates", read_jsonl(RAW / "affiliates.jsonl"))
     register("filings", read_jsonl(RAW / "_ledger.jsonl"))
@@ -157,7 +159,23 @@ def main():
     wsite = RAW / "websites.parquet"
     register("websites", pd.read_parquet(wsite) if wsite.exists() else pd.DataFrame())
 
-    print("▸ 企業ニュース（Google ニュース RSS・取得日時つき）")
+    print("▸ EDINET 提出書類の履歴")
+    register("filings_recent", read_jsonl(RAW / "filings_recent.jsonl"))
+
+    # Google ニュースと TDnet は公開版に載せられない。
+    #   ・Google ニュース: 利用規約が robot による取得・再表示・商用利用を禁じ、
+    #     robots.txt も /rss/ を Disallow にしている
+    #   ・TDnet: release.tdnet.info の robots.txt が User-agent:* Disallow:/ で全面拒否
+    # どちらも手元での私的利用に留め、配信物には含めない。
+    if args.public:
+        print("   ⏭️  ニュース・TDnet は公開版に含めません（各サービスの規約と robots.txt により）")
+        register("news", pd.DataFrame())
+        register("disclosures", pd.DataFrame())
+        con.close()
+        _summary(DB_PATH)
+        return
+
+    print("▸ 企業ニュース（Google ニュース RSS・取得日時つき／手元専用）")
     news_files = sorted((ROOT / "data" / "news").glob("articles*.jsonl"))
     news_df = pd.concat([read_jsonl(f) for f in news_files], ignore_index=True) \
         if news_files else pd.DataFrame()
@@ -171,12 +189,18 @@ def main():
         td = pd.concat([pd.read_parquet(f) for f in tdnet_files], ignore_index=True)
         register("disclosures", td)
 
+    con.close()
+    _summary(DB_PATH)
+
+
+def _summary(db_path):
+    con = duckdb.connect(str(db_path), read_only=True)
     print("\n📊 倉庫の中身:")
     for (t,) in con.execute("SHOW TABLES").fetchall():
         n = con.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
         print(f"   {t:20} {n:>8,} 行")
     con.close()
-    print(f"\n💾 {DB_PATH}")
+    print(f"\n💾 {db_path}")
 
 
 if __name__ == "__main__":

@@ -18,6 +18,8 @@ export interface Summary {
   disc_date: string | null;
   n_holdings: number;
   n_held_by: number;
+  n_sells_to: number;
+  n_buys_from: number;
 }
 
 export interface FinancialRow {
@@ -52,6 +54,8 @@ export interface Holding {
   purpose: string | null;
   /** 「有」なら相手も自社株を保有＝持ち合い */
   mutual: string | null;
+  /** 保有目的から読める取引の性質 */
+  relation: string | null;
 }
 
 export interface HeldBy {
@@ -60,6 +64,7 @@ export interface HeldBy {
   value: number | null;
   purpose: string | null;
   mutual: string | null;
+  relation: string | null;
 }
 
 export interface Shareholder {
@@ -81,6 +86,33 @@ export interface NewsItem {
   published: string;
   /** 観測時刻。これより前の記事を後から検証に混ぜないための目印 */
   fetched_at: string;
+}
+
+export interface FilingItem {
+  doc_id: string;
+  title: string;
+  submitted: string;
+  doc_type: string;
+}
+
+export interface TradeItem {
+  code: string | null;
+  name: string | null;
+  raw?: string;
+  amount: number | null;
+  segment: string | null;
+}
+
+export interface TradeRelation {
+  code: string | null;
+  name: string | null;
+  /** 仕入先 / 販売先 / 業務提携 */
+  direction: string;
+  amount: number | null;
+  segment: string | null;
+  /** 保有目的の原文（出所が保有目的のとき） */
+  note: string | null;
+  source: string;
 }
 
 export interface Detail extends Summary {
@@ -106,6 +138,10 @@ export interface Detail extends Summary {
   shareholders: Shareholder[];
   disclosures: Disclosure[];
   news: NewsItem[];
+  filings: FilingItem[];
+  sells_to: TradeItem[];
+  trade: TradeRelation[];
+  buys_from: TradeItem[];
 }
 
 export interface SectorTile {

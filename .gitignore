@@ -38,3 +38,11 @@ ui/dashboard_data.json
 
 # 検証の集計結果（J-Quants の派生物）
 results/
+
+# Google ニュース由来。利用規約が robot による取得・再表示・商用利用を禁じ、
+# robots.txt も /rss/ を Disallow にしているため、配信物にもリポジトリにも置かない。
+# 手元での私的利用のみ。
+data/news/
+# TDnet 由来。release.tdnet.info の robots.txt が全面拒否のため同様に扱う。
+data/tdnet_disclosures/
+data/edinet_raw/customer_probe.parquet

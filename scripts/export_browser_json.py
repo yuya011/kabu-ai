@@ -79,10 +79,41 @@ _ONLY_MARKS = __import__("re").compile(r"^[（(）)注\d\s．.、,・※*＊―�
 def useful_purpose(v):
     if not isinstance(v, str):
         return None
-    t = v.strip().strip("　")
+    # XBRL の断片由来で &amp; などがそのまま残ることがある
+    t = __import__("html").unescape(v).strip().strip("　")
     if t in _NO_PURPOSE or len(t) < 3 or _ONLY_MARKS.match(t):
         return None
     return t
+
+
+# 保有目的の文中には取引の方向が企業自身の言葉で書かれている。
+# 「同社より飲料用容器等の仕入を行っております」なら相手は仕入先。
+# 判定は機械的な語の一致だけで行い、書かれていないものは分類しない。
+# 6割は「取引関係の維持・強化のため」のように方向を書いていないので、
+# 無理に推測せず未分類のままにする。
+# 「サプライチェーン」の一部を仕入先と読んだり、「資金調達」を調達と読んだりしないよう、
+# 判定前に紛らわしい語を伏せる
+_MASK = __import__("re").compile(r"サプライチェーン|資金調達|調達先の分散|人材の調達")
+
+_RELATION_RULES = [
+    ("仕入先", __import__("re").compile(r"仕入|調達|購買|購入先|原材料|部品|外注|委託先|サプライヤー")),
+    ("販売先", __import__("re").compile(r"販売先|得意先|納入|受注|供給先|顧客|製品を販売|販売しており")),
+    ("業務提携", __import__("re").compile(r"業務提携|協業|アライアンス|共同開発|合弁|パートナー")),
+    ("金融取引", __import__("re").compile(r"金融機関|金融取引|融資|借入|資金調達|資金の借|銀行取引|与信")),
+]
+
+
+def relation_of(purpose):
+    """保有目的から取引の性質を読む。複数該当なら先に書かれている方を採る。"""
+    if not isinstance(purpose, str):
+        return None
+    text = _MASK.sub("　", purpose)
+    best, pos = None, len(text) + 1
+    for label, pat in _RELATION_RULES:
+        m = pat.search(text)
+        if m and m.start() < pos:
+            best, pos = label, m.start()
+    return best
 
 
 def clean(o):
@@ -125,6 +156,10 @@ def main():
     websites = con.execute("SELECT * FROM websites").df() if _has(con, "websites") else pd.DataFrame()
     filings = con.execute("SELECT * FROM filings").df() if _has(con, "filings") else pd.DataFrame()
     news = con.execute("SELECT * FROM news").df() if _has(con, "news") else pd.DataFrame()
+    recent = (con.execute("SELECT * FROM filings_recent").df()
+              if _has(con, "filings_recent") else pd.DataFrame())
+    customers = (con.execute("SELECT * FROM customers").df()
+                 if _has(con, "customers") else pd.DataFrame())
     con.close()
 
     if not len(fins):
@@ -150,7 +185,15 @@ def main():
         surprises = surprises.sort_values("disc_date", ascending=False)
         surp_by_code = {c: g for c, g in surprises.groupby("sec_code")}
 
-    name_by_code = dict(zip(companies.sec_code, companies.name))
+    # 企業マスタは現時点の上場企業。上場廃止などで載っていない相手が僅かにあるので、
+    # 取り込み台帳の提出者名で補う。素の証券コードが画面に出るのを防ぐ。
+    name_by_code = {}
+    if len(filings):
+        for r in filings.itertuples():
+            c = norm_code(r.sec_code)
+            if c and getattr(r, "filer_name", None):
+                name_by_code.setdefault(c, r.filer_name)
+    name_by_code.update(dict(zip(companies.sec_code, companies.name)))
     domain_by_code = dict(zip(websites.sec_code, websites.domain)) if len(websites) else {}
     url_by_code = dict(zip(websites.sec_code, websites.url)) if len(websites) else {}
     # 最新の有価証券報告書。docID があれば PDF と EDINET の書類画面に直接飛べる
@@ -165,9 +208,10 @@ def main():
             src, dst = norm_code(r.src_sec), norm_code(r.dst_sec)
             purpose = useful_purpose(getattr(r, "purpose", None))
             mutual = mutual_flag(getattr(r, "mutual", None))
+            relation = relation_of(purpose)
             rec = {"code": dst, "name": r.dst_name if dst else None, "raw": r.raw_name,
                    "shares": num(r.shares), "value": num(r.book_value),
-                   "purpose": purpose, "mutual": mutual}
+                   "purpose": purpose, "mutual": mutual, "relation": relation}
             if src:
                 hold_by_src[src].append(rec)
             if dst and src:
@@ -176,6 +220,10 @@ def main():
                     "name": name_by_code.get(src, src),
                     "value": num(r.book_value),
                     "purpose": purpose, "mutual": mutual,
+                    # 相手から見た向きなので反転する。相手が「仕入先」と書いていれば
+                    # この会社はその相手にとって仕入先＝この会社から見れば販売先
+                    "relation": {"仕入先": "販売先", "販売先": "仕入先"}.get(
+                        relation_of(purpose), relation_of(purpose)),
                 })
 
     share_by_code = defaultdict(list)
@@ -197,6 +245,32 @@ def main():
                     "title": r.title, "link": r.link, "source": r.source,
                     "published": r.published, "fetched_at": r.fetched_at,
                 })
+
+    # EDINET の提出書類。ニュースの代替として「最近の動き」を示す
+    recent_by_code = defaultdict(list)
+    if len(recent):
+        for r in recent.sort_values("submitted", ascending=False).itertuples():
+            c = norm_code(r.sec_code)
+            if c:
+                recent_by_code[c].append({
+                    "doc_id": r.doc_id, "title": r.title,
+                    "submitted": r.submitted, "doc_type": r.doc_type,
+                })
+
+    # 商流。src が dst を主要顧客として挙げている（= dst が src の売上先）
+    sells_to = defaultdict(list)   # この会社の主要顧客
+    buys_from = defaultdict(list)  # この会社を主要顧客に挙げている会社
+    if len(customers):
+        for r in customers.itertuples():
+            src, dst = norm_code(r.src_sec), norm_code(r.dst_sec)
+            if not src:
+                continue
+            rec = {"code": dst, "name": r.dst_name if dst else None,
+                   "raw": r.raw_name, "amount": num(r.amount), "segment": r.segment}
+            sells_to[src].append(rec)
+            if dst and dst != src:
+                buys_from[dst].append({"code": src, "name": name_by_code.get(src, src),
+                                       "amount": num(r.amount), "segment": r.segment})
 
     disc_by_code = defaultdict(list)
     if len(disclosures):
@@ -240,6 +314,8 @@ def main():
             "progress": progress, "pctile": pctile, "excess": excess,
             "period": period, "disc_date": disc_date,
             "n_holdings": len(held), "n_held_by": len(held_by_dst.get(code, [])),
+            "n_sells_to": len(sells_to.get(code, [])),
+            "n_buys_from": len(buys_from.get(code, [])),
         }
 
         history = []
@@ -288,6 +364,13 @@ def main():
             "shareholders": share_by_code.get(code, [])[:10],
             "disclosures": disc_by_code.get(code, [])[:20],
             "news": news_by_code.get(code, [])[:12],
+            "filings": recent_by_code.get(code, [])[:12],
+            "sells_to": sorted(sells_to.get(code, []),
+                               key=lambda x: -(x["amount"] or 0))[:20],
+            "buys_from": sorted(buys_from.get(code, []),
+                                key=lambda x: -(x["amount"] or 0))[:20],
+            "trade": build_trade(code, sells_to, buys_from,
+                                 hold_by_src, held_by_dst),
         }
 
     # ---- 業種タイル（大雑把な入口）
@@ -317,7 +400,16 @@ def main():
             "surprise_count": len(surprises),
             "holding_count": int(len(holdings)),
             "holding_companies": int(holdings.src_sec.nunique()) if len(holdings) else 0,
+            "customer_count": int(len(customers)),
         },
+        # 公共データ利用規約(PDL1.0)は出典の明記と、加工した旨の表示を求めている
+        "sources": [
+            {"name": "EDINET（金融庁）",
+             "url": "https://disclosure2.edinet-fsa.go.jp/",
+             "license": "公共データ利用規約（PDL1.0）",
+             "license_url": "https://disclosure2dl.edinet-fsa.go.jp/guide/static/submit/WZEK0030.html",
+             "note": "有価証券報告書の政策保有株・大株主・主要な顧客・株式事務の記載をもとに作成"},
+        ],
         "sectors": sectors,
         # 全銘柄の軽量な目録。検索とグラフのラベル/ファビコンをこれ1本で賄い、
         # ノードを描くたびに企業ファイルを取りに行かなくて済むようにする。
@@ -359,7 +451,7 @@ def main():
     # ho = 政策保有している先 / hi = 政策保有されている元
     # mo = 大株主になっている先 / mi = 大株主に入っている上場企業
     # 企業詳細より桁違いに軽いので、2ホップに広げても取得コストが小さい。
-    adj = defaultdict(lambda: {"ho": [], "hi": [], "mo": [], "mi": []})
+    adj = defaultdict(lambda: {"ho": [], "hi": [], "mo": [], "mi": [], "co": [], "ci": []})
     if len(holdings):
         for r in holdings.itertuples():
             src, dst = norm_code(r.src_sec), norm_code(r.dst_sec)
@@ -367,8 +459,12 @@ def main():
                 continue
             v = num(r.book_value)
             mu = 1 if mutual_flag(getattr(r, "mutual", None)) == "有" else 0
-            adj[src]["ho"].append([dst, v, mu])
-            adj[dst]["hi"].append([src, v, mu])
+            # 保有目的から読める取引の性質。相手側から見た辺では向きを反転する
+            rel = relation_of(useful_purpose(getattr(r, "purpose", None)))
+            code_of = {"仕入先": 1, "販売先": 2, "業務提携": 3, "金融取引": 4}
+            flip = {"仕入先": "販売先", "販売先": "仕入先"}
+            adj[src]["ho"].append([dst, v, mu, code_of.get(rel, 0)])
+            adj[dst]["hi"].append([src, v, mu, code_of.get(flip.get(rel, rel), 0)])
     if len(shareholders):
         for r in shareholders.itertuples():
             src, dst = norm_code(r.src_sec), norm_code(r.dst_sec)
@@ -376,18 +472,66 @@ def main():
                 continue
             adj[src]["mo"].append(dst)
             adj[dst]["mi"].append(src)
+    # co = 主要顧客として挙げている先 / ci = この会社を主要顧客に挙げている元
+    if len(customers):
+        for r in customers.itertuples():
+            src, dst = norm_code(r.src_sec), norm_code(r.dst_sec)
+            if not src or not dst or src == dst:
+                continue
+            v = num(r.amount)
+            adj[src]["co"].append([dst, v])
+            adj[dst]["ci"].append([src, v])
     for a in adj.values():
-        a["ho"].sort(key=lambda x: -(x[1] or 0))
-        a["hi"].sort(key=lambda x: -(x[1] or 0))
+        for k in ("ho", "hi", "co", "ci"):
+            a[k].sort(key=lambda x: -(x[1] or 0))
 
     gshards = defaultdict(dict)
     for c, a in adj.items():
         gshards[c[:2]][c] = a
     for prefix, obj in gshards.items():
         total += write(OUT / "graph" / f"{prefix}.json", obj)
-    n_edges = sum(len(a["ho"]) for a in adj.values()) + sum(len(a["mo"]) for a in adj.values())
+    n_edges = sum(len(a["ho"]) + len(a["mo"]) + len(a["co"]) for a in adj.values())
     print(f"▸ graph/      {len(gshards)} シャード / ノード {len(adj):,} / 有向エッジ {n_edges:,}")
     print(f"\n💾 {OUT}  合計 {total/1024/1024:.1f} MB")
+
+
+def build_trade(code, sells_to, buys_from, hold_by_src, held_by_dst):
+    """取引関係を1本にまとめる。出所は2つある。
+
+      ・有報「主要な顧客ごとの情報」… 売上の10%以上を占める顧客。金額つきだが件数は少ない
+      ・政策保有の保有目的の文言    … 方向が読める場合のみ。件数は多いが金額はない
+
+    どちらも企業自身の記載で、こちらで推測を足していない。
+    """
+    out, seen = [], set()
+
+    def add(rec):
+        key = (rec["code"], rec["direction"])
+        if rec["code"] and key in seen:
+            return
+        seen.add(key)
+        out.append(rec)
+
+    for t in sorted(sells_to.get(code, []), key=lambda x: -(x["amount"] or 0)):
+        add({"code": t["code"], "name": t["name"] or t.get("raw"),
+             "direction": "販売先", "amount": t["amount"],
+             "segment": t["segment"], "note": None, "source": "主要な顧客の明細"})
+    for t in sorted(buys_from.get(code, []), key=lambda x: -(x["amount"] or 0)):
+        add({"code": t["code"], "name": t["name"], "direction": "仕入先",
+             "amount": t["amount"], "segment": t["segment"],
+             "note": None, "source": "相手の主要顧客の明細"})
+
+    for h in sorted(hold_by_src.get(code, []), key=lambda x: -(x["value"] or 0)):
+        if h.get("relation") in ("仕入先", "販売先", "業務提携") and h.get("code"):
+            add({"code": h["code"], "name": h["name"], "direction": h["relation"],
+                 "amount": None, "segment": None, "note": h.get("purpose"),
+                 "source": "政策保有の保有目的"})
+    for h in sorted(held_by_dst.get(code, []), key=lambda x: -(x["value"] or 0)):
+        if h.get("relation") in ("仕入先", "販売先", "業務提携") and h.get("code"):
+            add({"code": h["code"], "name": h["name"], "direction": h["relation"],
+                 "amount": None, "segment": None, "note": h.get("purpose"),
+                 "source": "相手の政策保有の保有目的"})
+    return out[:30]
 
 
 def _has(con, table) -> bool:
