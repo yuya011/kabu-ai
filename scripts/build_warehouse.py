@@ -52,7 +52,40 @@ def load_companies_public() -> pd.DataFrame:
     if not snaps:
         raise SystemExit("❌ EDINETコードリストがありません")
     cl = pd.read_parquet(snaps[-1])
-    cl = cl[(cl["上場区分"] == "上場") & cl["証券コード"].notna()].copy()
+
+    # 上場の判定はコードリストの「上場区分」ではなく取り込み台帳を基準にする。
+    # 区分は実態とずれることがあり、サッポロホールディングスは子会社名
+    # 「サッポロビール株式会社」で登録されていて社名から引けない。
+    # EDINET API の secCode は上場企業にしか付かないので、台帳の方が確かである。
+    ledger = read_jsonl(RAW / "_ledger.jsonl")
+    listed_codes = set()
+    ledger_names = {}
+    if len(ledger):
+        for c, n in zip(ledger["sec_code"], ledger["filer_name"]):
+            if isinstance(c, str) and c:
+                listed_codes.add(c)
+                if isinstance(n, str):
+                    ledger_names.setdefault(c, n)
+
+    cl = cl[((cl["上場区分"] == "上場") & cl["証券コード"].notna())
+            | cl["証券コード"].isin(listed_codes)].copy()
+    # 台帳にしかない上場企業を補う
+    known = set(cl["証券コード"].dropna())
+    missing = [c for c in listed_codes if c not in known]
+    if missing:
+        cl = pd.concat([cl, pd.DataFrame({
+            "証券コード": missing,
+            "提出者名": [ledger_names.get(c, c) for c in missing],
+            "提出者名（英字）": [None] * len(missing),
+            "提出者業種": [None] * len(missing),
+            "ＥＤＩＮＥＴコード": [None] * len(missing),
+            "提出者法人番号": [None] * len(missing),
+            "決算日": [None] * len(missing),
+            "資本金": [None] * len(missing),
+        })], ignore_index=True)
+    # 台帳の社名を優先する（コードリストが子会社名で登録している場合があるため）
+    cl["提出者名"] = [ledger_names.get(c, n) for c, n in zip(cl["証券コード"], cl["提出者名"])]
+
     df = cl.rename(columns={
         "証券コード": "sec_code", "提出者名": "name",
         "提出者名（英字）": "name_en", "提出者業種": "s33_name",
@@ -61,6 +94,9 @@ def load_companies_public() -> pd.DataFrame:
     })
     df["formal_name"] = df["name"]
     # 業種コードは色分けに使うだけなので、業種名から安定した番号を振る
+    industries = sorted(df["s33_name"].dropna().unique())
+    order = {v: str(i) for i, v in enumerate(industries)}
+    df["s33_name"] = df["s33_name"].fillna("その他")
     industries = sorted(df["s33_name"].dropna().unique())
     order = {v: str(i) for i, v in enumerate(industries)}
     df["s33"] = df["s33_name"].map(order)

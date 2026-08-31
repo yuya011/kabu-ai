@@ -92,6 +92,8 @@ function Launch({ catalog, onPick, onOpenBrowser }: {
     if (!s) return [];
     const out: [string, NodeRec][] = [];
     for (const [code, rec] of catalog) {
+      // 中心に置けるのは上場企業だけなので、検索も上場に絞る
+      if (rec.kind !== 0) continue;
       if (code.startsWith(s) || rec.name.toLowerCase().includes(s)) {
         out.push([code, rec]);
         if (out.length >= 40) break;
@@ -322,6 +324,7 @@ function Inspector({ code, catalog, detail, onClose, onCenter, wide, onToggleWid
 }) {
   const rec = catalog.get(code);
   if (!rec) return null;
+  const unlisted = rec.kind !== 0;
   const site = detail?.domain ? `https://${detail.domain}` : null;
   const pdf = detail?.doc_id
     ? `https://disclosure2dl.edinet-fsa.go.jp/searchdocument/pdf/${detail.doc_id}.pdf` : null;
@@ -338,7 +341,16 @@ function Inspector({ code, catalog, detail, onClose, onCenter, wide, onToggleWid
             <div className="ap-title3" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {rec.name}
             </div>
-            <div className="ap-footnote">{rec.s33} · {short(code)}</div>
+            <div className="ap-footnote">
+              {unlisted ? (
+                <>
+                  <span className="ap-badge">非上場</span>{' '}
+                  {rec.s33 || (rec.kind === 1 ? 'EDINET に提出者登録あり' : '有報の記載のみ')}
+                </>
+              ) : (
+                <>{rec.s33} · {short(code)}</>
+              )}
+            </div>
           </div>
           <Tip tip={wide ? 'パネルを狭める' : 'パネルを広げる'} pos="left">
             <button className="ap-btn ap-btn-plain" onClick={onToggleWide} style={{ padding: 3 }}>
@@ -350,7 +362,16 @@ function Inspector({ code, catalog, detail, onClose, onCenter, wide, onToggleWid
       </div>
 
       <div className="ap-inspector-body">
-        <button className="ap-ask" onClick={onAsk} disabled={!detail}>
+        {unlisted && (
+          <div className="ap-footnote" style={{ padding: '12px 16px', lineHeight: 1.6 }}>
+            上場していないため、決算や開示の情報は扱っていません。
+            上場企業の有価証券報告書に相手として記載されている関係だけを表示しています。
+            この会社を中心にすることはできません。
+          </div>
+        )}
+
+        {!unlisted && (
+        <><button className="ap-ask" onClick={onAsk} disabled={!detail}>
           {asked ? <Check size={13} /> : <Sparkles size={13} />}
           {asked === 'copied' ? 'プロンプトをコピーしました'
             : asked === 'opened' ? 'Gemini を開きました'
@@ -358,7 +379,8 @@ function Inspector({ code, catalog, detail, onClose, onCenter, wide, onToggleWid
         </button>
         <div className="ap-footnote" style={{ padding: '0 16px 10px' }}>
           有報から抜いた決算・政策保有・保有目的を添えて開きます
-        </div>
+        </div></>
+        )}
 
         {path && path.length > 0 && (
           <PathTrace hops={path} catalog={catalog} center={center}
@@ -386,11 +408,13 @@ function Inspector({ code, catalog, detail, onClose, onCenter, wide, onToggleWid
             <ExternalLink size={11} className="ter" style={{ marginLeft: 'auto' }} />
           </a>
         )}
+        {!unlisted && (
         <a className="ap-linkbtn" href={`https://finance.yahoo.co.jp/quote/${short(code)}.T`}
           target="_blank" rel="noreferrer">
           <LineChart size={13} className="sec" /> 株価・IR (Yahoo!ファイナンス)
           <ExternalLink size={11} className="ter" style={{ marginLeft: 'auto' }} />
         </a>
+        )}
 
         {detail && (
           <>
@@ -655,8 +679,8 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
     loadIndex<any>(`${BASE}/index.json`)
       .then((j) => {
         const m = new Map<string, NodeRec>();
-        for (const [code, name, s17, s33, domain] of j.nodes) {
-          m.set(code, { name, s17, s33, domain });
+        for (const [code, name, s17, s33, domain, kind] of j.nodes) {
+          m.set(code, { name, s17, s33, domain, kind: kind ?? 0 });
         }
         setCatalog(m);
       })
@@ -725,10 +749,15 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
   }, [loadShard]);
 
   const loadDetail = useCallback(async (code: string) => {
+    // 企業詳細のシャードは上場企業ぶんしか無い。非上場を引きに行くと 404 になる
+    if (catalog?.get(code)?.kind !== 0) {
+      setDetail(null);
+      return;
+    }
     const shard = await loadShard(code);
     setDetail(shard[code] ?? null);
     ensurePurpose(code);
-  }, [loadShard, ensurePurpose]);
+  }, [loadShard, ensurePurpose, catalog]);
 
   const pick = useCallback((code: string) => {
     setCenter(code); setSelected(code); setDetail(null); setQuery('');
@@ -756,7 +785,8 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
       for (const h of hops) { ids.add(h.from); ids.add(h.to); }
       const nodes: GNode[] = [...ids].map((id) => {
         const rec = catalog!.get(id)!;
-        return { id, depth: 1, name: rec.name, s17: rec.s17, s33: rec.s33, domain: rec.domain, degree: 2 };
+        return { id, depth: 1, name: rec.name, s17: rec.s17, s33: rec.s33,
+                 domain: rec.domain, kind: rec.kind, degree: 2 };
       });
       setExtra({ nodes, links: hops.map((h) => h.link) });
     } finally {
@@ -821,6 +851,7 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
     if (!s) return [];
     const out: [string, NodeRec][] = [];
     for (const [code, rec] of catalog) {
+      if (rec.kind !== 0) continue;
       if (code.startsWith(s) || rec.name.toLowerCase().includes(s)) out.push([code, rec]);
       if (out.length >= 30) break;
     }
@@ -940,7 +971,16 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
 
               ctx.save();
               ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 2 * Math.PI);
-              if (n.domain && ready(img)) {
+              if (n.kind !== 0) {
+                // 非上場。ドメインが分からずファビコンも引けないので、
+                // 淡い塗りと破線の輪郭で上場と区別する
+                ctx.fillStyle = palette.ring; ctx.fill();
+                ctx.clip();
+                ctx.fillStyle = palette.sub;
+                ctx.font = `600 ${r}px -apple-system, "Hiragino Sans", sans-serif`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(n.name.slice(0, 1), n.x, n.y + 0.5);
+              } else if (n.domain && ready(img)) {
                 ctx.fillStyle = palette.ring; ctx.fill();
                 ctx.clip();
                 ctx.drawImage(img!, n.x - r, n.y - r, r * 2, r * 2);
@@ -955,7 +995,15 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
               ctx.restore();
 
               ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 2 * Math.PI);
-              ctx.strokeStyle = palette.ring; ctx.lineWidth = 1.4; ctx.stroke();
+              if (n.kind !== 0) {
+                ctx.setLineDash([2.5 / scale, 2 / scale]);
+                ctx.strokeStyle = palette.sub; ctx.lineWidth = 1.1;
+              } else {
+                ctx.setLineDash([]);
+                ctx.strokeStyle = palette.ring; ctx.lineWidth = 1.4;
+              }
+              ctx.stroke();
+              ctx.setLineDash([]);
 
               // ラベルは常に画面上 11px。ワールド座標に下限を置くと、
               // ズームインしたときに画面上で数倍に膨れて全部重なる。
@@ -1122,7 +1170,7 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
 
         {selected && selected !== center && (() => {
           const rec = catalog.get(selected);
-          if (!rec) return null;
+          if (!rec || rec.kind !== 0) return null;  // 非上場は中心に置けない
           return (
             <div className="ap-float ap-graph-actions ap-in"
               style={compact ? undefined

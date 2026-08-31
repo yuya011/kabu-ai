@@ -6,6 +6,8 @@ export interface NodeRec {
   s17: string;
   s33: string;
   domain: string;
+  /** 0=上場 1=EDINET登録の非上場 2=名前のみ。中心に置けるのは 0 だけ */
+  kind: number;
 }
 
 export interface Adj {
@@ -25,6 +27,7 @@ export interface GNode {
   s17: string;
   s33: string;
   domain: string;
+  kind: number;
   depth: number;
   degree: number;
 }
@@ -159,7 +162,7 @@ export async function buildEgo(
     const rec = catalog.get(id)!;
     return {
       id, depth, name: rec.name, s17: rec.s17, s33: rec.s33,
-      domain: rec.domain, degree: degree.get(id) || 0,
+      domain: rec.domain, kind: rec.kind, degree: degree.get(id) || 0,
     };
   });
 

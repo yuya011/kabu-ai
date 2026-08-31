@@ -80,8 +80,18 @@ CORP_FORMS = [
 CATEGORIES = ["親会社", "連結子会社", "非連結子会社", "持分法適用関連会社",
               "持分法適用非連結子会社", "関連会社", "その他の関係会社"]
 
-# 大株主に頻出する非事業会社。持ち合い関係のノイズになるため除外する。
+# 大株主に頻出する名義口座。実質的な保有者ではないため除外する。
+#
+# 線引きは「名義か実質か」で引く。ネット証券や外国ブローカーは顧客の株を
+# 名義で預かっているだけなので外す（SBI証券は492社、楽天証券は231社に現れ、
+# 入れると意味のない巨大ハブになる）。一方、生保・銀行は自ら長期保有する
+# 実質株主なので残す。日本生命が336社に現れるのは事実として意味がある。
 SHAREHOLDER_NOISE = [
+    "証券", "證券", "共有口", "口座", "INTERACTIVEBROKERS", "CLIENTSECURITIES",
+    "MSIPCLIENT", "NOMINEE", "OMNIBUS",
+    # 外国名義は「常任代理人」を伴うのが決まりなので、これを決め手にする。
+    # カタカナ表記が揺れる（ジェーピーモルガン／ＪＰモルガン等）ため個別列挙は追いつかない。
+    "常任代理人", "デポジタリ", "DEPOSITARY", "メロン", "MELLON",
     "信託口", "信託銀行", "カストディ", "CUSTODY", "STATESTREET", "ステートストリート",
     "JPMORGAN", "MORGANSTANLEY", "MERRILL", "BNP", "BNY", "CITIBANK", "GOLDMANSACHS",
     "自己株式", "従業員持株会", "取引先持株会", "共済会", "NORTHERNTRUST",
@@ -92,9 +102,15 @@ SHAREHOLDER_NOISE = [
 # ---------------------------------------------------------------- 正規化・名寄せ
 
 def norm(s: str) -> str:
-    """NFKC 正規化 + 空白/注記除去。表記ゆれ(全角英数・㈱・（注1）等)を吸収する。"""
+    """NFKC 正規化 + 空白/注記除去。表記ゆれ(全角英数・㈱・（注1）等)を吸収する。
+
+    XBRL の断片由来で &amp; などの実体参照がそのまま残ることがある。
+    戻さないと「MS&amp;ADインシュアランス…」が辞書の「MS&AD…」に一致せず、
+    実在する上場企業を取りこぼす。
+    """
     if not isinstance(s, str):
         return ""
+    s = html.unescape(s)
     s = unicodedata.normalize("NFKC", s)
     s = s.replace("㈱", "株式会社").replace("(株)", "株式会社")
     s = s.replace("㈲", "有限会社").replace("(有)", "有限会社")
@@ -369,8 +385,12 @@ def extract_customers(frag: str) -> list:
             if len(cells) < 2:
                 continue
             name = cells[0]
-            if not name or "顧客の名称" in name or "名称又は氏名" in name:
-                continue  # 見出し行
+            # 見出し行や、匿名化された行を落とす。表の構造が会社ごとに揺れるため、
+            # 1列目に見出し語がそのまま入ってくることがある。
+            if not name or any(k in name for k in (
+                    "顧客の名称", "名称又は氏名", "氏名又は名称", "相手先",
+                    "顧客の氏名", "売上高", "セグメント", "主要な顧客")):
+                continue
             amount = None
             for c in cells[1:]:
                 t = c.replace(",", "").replace("△", "-").strip()

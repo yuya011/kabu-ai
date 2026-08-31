@@ -10,14 +10,23 @@ API を毎回叩かず、ここで作った静的ファイルだけを読ませ�
     python scripts/export_browser_json.py
 """
 
+import sys
 import json
 import math
 from pathlib import Path
 from collections import defaultdict
 
+import re
+import hashlib
+
 import duckdb
 import pandas as pd
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.edinet_client import (  # noqa: E402
+    norm as ec_norm, core_name as ec_core, is_shareholder_noise, latest_codelist,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "kabu.duckdb"
@@ -44,6 +53,99 @@ def ratio(a, b):
     if a is None or b is None or b == 0:
         return None
     return round(a / b, 6)
+
+
+# ---- 実体の名寄せ -------------------------------------------------------
+#
+# グラフの中心に置けるのは上場企業だけだが、相手方は非上場でもノードとして残す。
+# 相手が非上場だからとエッジごと捨てると、大株主の 88%、主要顧客の 74% が失われる。
+#
+# 3層で解決する。
+#   0: 上場企業        … 証券コードを id にする
+#   1: EDINET 登録法人  … 非上場だが有報等の提出者。EDINETコードを id にする
+#   2: 名前のみ        … EDINET にも無い相手。正規化名のハッシュを id にする
+#
+# 個人名はノードにしない。大株主には創業家などの個人が 10,027 件現れるが、
+# 私人を図に載せる必要がないうえ、同姓同名の取り違えも起こる。
+_CORP_TOKEN = re.compile(
+    r"株式会社|有限会社|合同会社|合資会社|合名会社|\(株\)|㈱|組合|法人|"
+    r"銀行|信用金庫|信用組合|公庫|機構|公社|事業団|大学|"
+    # 官公庁・自治体も主要顧客として実在する（国土交通省が22社の顧客に挙がる）
+    r"[省庁]$|^国|独立行政法人|[都道府県市区町村]$|"
+    r"Inc|Corp|Ltd|LLC|L\.P|Co\.|Company|Holdings|Group|PLC|GmbH|S\.A")
+
+
+class EntityResolver:
+    def __init__(self, codelist, ledger=None):
+        self.listed_full, self.listed_core = {}, {}
+        self.edinet_full, self.edinet_core = {}, {}
+        for name, sec, ecode, ind, listed, kind_ in zip(
+                codelist["提出者名"], codelist["証券コード"],
+                codelist["ＥＤＩＮＥＴコード"], codelist["提出者業種"],
+                codelist["上場区分"], codelist["提出者種別"]):
+            if not isinstance(name, str):
+                continue
+            # コードリストには大量保有報告書を出す個人が 3,146 件含まれる。
+            # 私人をノードにしないため、種別で落とす。
+            if isinstance(kind_, str) and "個人" in kind_:
+                continue
+            n, c = ec_norm(name), ec_core(name)
+            industry = ind if isinstance(ind, str) else ""
+            if listed == "上場" and isinstance(sec, str) and sec:
+                rec = {"id": str(sec), "name": name, "kind": 0, "industry": industry}
+                self.listed_full.setdefault(n, rec)
+                if len(c) >= 2:
+                    self.listed_core.setdefault(c, rec)
+            else:
+                rec = {"id": ecode, "name": name, "kind": 1, "industry": industry}
+                self.edinet_full.setdefault(n, rec)
+                if len(c) >= 2:
+                    self.edinet_core.setdefault(c, rec)
+
+        # 取り込み台帳を上場側に足す。EDINET API の secCode は上場企業にしか付かず、
+        # コードリストの 上場区分 より実態に近い。サッポロホールディングスは
+        # コードリストでは子会社名「サッポロビール」で登録されており引けない。
+        if ledger is not None and len(ledger):
+            for name, sec in zip(ledger["filer_name"], ledger["sec_code"]):
+                if not isinstance(name, str) or not isinstance(sec, str):
+                    continue
+                rec = {"id": sec, "name": name, "kind": 0, "industry": ""}
+                self.listed_full.setdefault(ec_norm(name), rec)
+                c = ec_core(name)
+                if len(c) >= 2:
+                    self.listed_core.setdefault(c, rec)
+
+    def _lookup(self, full, core, raw):
+        n, c = ec_norm(raw), ec_core(raw)
+        if len(c) < 2:
+            return None
+        hit = full.get(n) or core.get(c)
+        if hit:
+            return hit
+        n2 = re.sub(r"[\d,、・.]+$", "", n)
+        c2 = re.sub(r"[\d,、・.]+$", "", c)
+        return full.get(n2) or core.get(c2) if len(c2) >= 2 else None
+
+    def resolve(self, raw, allow_unlisted=True):
+        """上場 → EDINET登録 → 名前のみ、の順に解決する。個人名は None。"""
+        if not isinstance(raw, str) or not raw.strip():
+            return None
+        hit = self._lookup(self.listed_full, self.listed_core, raw)
+        if hit:
+            return hit
+        if not allow_unlisted:
+            return None
+        hit = self._lookup(self.edinet_full, self.edinet_core, raw)
+        if hit:
+            return hit
+        n = ec_norm(raw)
+        if not _CORP_TOKEN.search(n):
+            return None  # 個人名とみなす
+        c = ec_core(raw)
+        if len(c) < 2:
+            return None
+        return {"id": "X" + hashlib.sha1(c.encode("utf-8")).hexdigest()[:9],
+                "name": raw.strip(), "kind": 2, "industry": ""}
 
 
 def norm_code(v):
@@ -185,6 +287,35 @@ def main():
         surprises = surprises.sort_values("disc_date", ascending=False)
         surp_by_code = {c: g for c, g in surprises.groupby("sec_code")}
 
+    # ---- 相手方を上場・非上場の別で名寄せし直す ----
+    # 取り込み時は上場企業にしか名寄せしていなかったため、非上場が相手のエッジを
+    # 捨てていた。ここで解決し直すことで、再取得なしに非上場ノードを足せる。
+    resolver = EntityResolver(latest_codelist(), filings)
+    extra_nodes = {}
+
+    def resolve_into(df, raw_col, id_col, name_col, drop_noise=False):
+        if not len(df):
+            return df
+        ids, names = [], []
+        for raw in df[raw_col]:
+            hit = None
+            if not (drop_noise and is_shareholder_noise(raw)):
+                hit = resolver.resolve(raw)
+            if hit and hit["kind"] > 0:
+                extra_nodes.setdefault(hit["id"], hit)
+            ids.append(hit["id"] if hit else None)
+            names.append(hit["name"] if hit else None)
+        df = df.copy()
+        df[id_col] = ids
+        df[name_col] = names
+        return df
+
+    holdings = resolve_into(holdings, "raw_name", "dst_sec", "dst_name")
+    customers = resolve_into(customers, "raw_name", "dst_sec", "dst_name")
+    shareholders = resolve_into(shareholders, "raw_name", "src_sec", "src_name",
+                                drop_noise=True)
+    print(f"   名寄せ: 上場のみ → 非上場を含む / 非上場ノード {len(extra_nodes):,} 件")
+
     # 企業マスタは現時点の上場企業。上場廃止などで載っていない相手が僅かにあるので、
     # 取り込み台帳の提出者名で補う。素の証券コードが画面に出るのを防ぐ。
     name_by_code = {}
@@ -193,6 +324,8 @@ def main():
             c = norm_code(r.sec_code)
             if c and getattr(r, "filer_name", None):
                 name_by_code.setdefault(c, r.filer_name)
+    for nid, rec in extra_nodes.items():
+        name_by_code.setdefault(nid, rec["name"])
     name_by_code.update(dict(zip(companies.sec_code, companies.name)))
     domain_by_code = dict(zip(websites.sec_code, websites.domain)) if len(websites) else {}
     url_by_code = dict(zip(websites.sec_code, websites.url)) if len(websites) else {}
@@ -411,11 +544,14 @@ def main():
              "note": "有価証券報告書の政策保有株・大株主・主要な顧客・株式事務の記載をもとに作成"},
         ],
         "sectors": sectors,
-        # 全銘柄の軽量な目録。検索とグラフのラベル/ファビコンをこれ1本で賄い、
-        # ノードを描くたびに企業ファイルを取りに行かなくて済むようにする。
-        "nodes": [[c.sec_code, c.name, c.s17, c.s33_name,
-                   domain_by_code.get(c.sec_code) or ""]
-                  for c in companies.itertuples()],
+        # 全ノードの軽量な目録。検索とグラフのラベル/ファビコンをこれ1本で賄う。
+        # 末尾は種別で、0=上場 1=EDINET登録の非上場 2=名前のみ。
+        # 中心に置けるのは 0 だけだが、相手方としては 1,2 も描く。
+        "nodes": ([[c.sec_code, c.name, c.s17, c.s33_name,
+                    domain_by_code.get(c.sec_code) or "", 0]
+                   for c in companies.itertuples()]
+                  + [[nid, rec["name"], "", rec.get("industry") or "", "", rec["kind"]]
+                     for nid, rec in sorted(extra_nodes.items())]),
         "markets": [{"name": k, "count": int(v)}
                     for k, v in companies.market.value_counts().items()],
         "scales": [{"name": k, "count": int(v)}
