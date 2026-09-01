@@ -6,4 +6,4 @@ compatibility_date = "2026-01-01"
 binding = "DB"
 database_name = "kabu-stats"
 # npx wrangler d1 create kabu-stats で払い出された id を入れる
-database_id = "PUT-YOUR-D1-DATABASE-ID-HERE"
+database_id = "9dcf833f-c98d-42a1-912f-8f9c42c66146"

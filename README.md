@@ -196,5 +196,8 @@ npx wrangler deploy
 配置したら、フロントのビルド時に送り先を渡します。設定しなければ何も送りません。
 
 ```bash
-VITE_ANALYTICS_URL=https://kabu-stats.<subdomain>.workers.dev npm run build
+VITE_ANALYTICS_URL=https://kabu-stats.yuya011.workers.dev npm run build
 ```
+
+公開ビルドでは [.github/workflows/update-and-publish.yml](.github/workflows/update-and-publish.yml) が
+この値を渡している。手元の `npm run dev` では未設定なので何も送らない。

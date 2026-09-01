@@ -100,6 +100,8 @@ jobs:
         env:
           VITE_BASE: /${{ github.event.repository.name }}/
           VITE_PUBLIC: '1'
+          # 閲覧統計の送り先。未設定なら何も送らない（worker/ を参照）
+          VITE_ANALYTICS_URL: https://kabu-stats.yuya011.workers.dev
         run: |
           npm ci
           npm run build
