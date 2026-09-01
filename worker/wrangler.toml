@@ -1,0 +1,9 @@
+name = "kabu-stats"
+main = "index.js"
+compatibility_date = "2026-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kabu-stats"
+# npx wrangler d1 create kabu-stats で払い出された id を入れる
+database_id = "PUT-YOUR-D1-DATABASE-ID-HERE"

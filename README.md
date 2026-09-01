@@ -171,3 +171,30 @@ push を契機に GitHub Actions が動き、サイトが作り直されます�
 # 1/4/7/10月の1日 朝5時
 0 5 1 1,4,7,10 * cd /path/to/kabu-ai && bash scripts/update_edinet_local.sh >> data/edinet_raw/quarterly.log 2>&1
 ```
+
+## 📱 ホーム画面アプリ（PWA）
+
+ホーム画面に追加すると、Safari の枠なしで起動し、機内でも開けます。
+App Store の審査も年会費も要りません。
+
+配信 JSON は端末内（IndexedDB）に版付きで持ち、画面の外枠は Service Worker が持ちます。
+両方で 40MB を抱えないよう、担当を分けてあります。
+
+## 📈 閲覧統計（任意）
+
+「どの企業がどれくらい調べられているか」を貯めるための受け口を `worker/` に置いています。
+**利用者を区別する値（ID・Cookie・端末情報・IPアドレス）は作らず、送らず、保存しません。**
+記録するのは銘柄コード・日付・時間帯・国の4つだけで、個人情報を扱わない構成です。
+
+```bash
+cd worker
+npx wrangler d1 create kabu-stats                       # 払い出された id を wrangler.toml へ
+npx wrangler d1 execute kabu-stats --file schema.sql --remote
+npx wrangler deploy
+```
+
+配置したら、フロントのビルド時に送り先を渡します。設定しなければ何も送りません。
+
+```bash
+VITE_ANALYTICS_URL=https://kabu-stats.<subdomain>.workers.dev npm run build
+```

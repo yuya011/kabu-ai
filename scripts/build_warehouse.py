@@ -198,6 +198,10 @@ def main():
     print("▸ EDINET 提出書類の履歴")
     register("filings_recent", read_jsonl(RAW / "filings_recent.jsonl"))
 
+    # 臨時報告書の提出理由と出来事。ニュースの代替として使う
+    print("▸ 臨時報告書の出来事")
+    register("events", read_jsonl(RAW / "events.jsonl"))
+
     # Google ニュースと TDnet は公開版に載せられない。
     #   ・Google ニュース: 利用規約が robot による取得・再表示・商用利用を禁じ、
     #     robots.txt も /rss/ を Disallow にしている

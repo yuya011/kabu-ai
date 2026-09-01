@@ -4,10 +4,10 @@ import {
   Search, X, ArrowLeft, ExternalLink, FileText, LineChart,
   Globe, Network, Loader2, Building2, Newspaper, ChevronsLeft, ChevronsRight,
   SlidersHorizontal, CornerDownRight, Route, Crosshair, Sparkles, Check,
-  ScrollText, Info,
+  ScrollText, Info, Megaphone,
 } from 'lucide-react';
 import './apple.css';
-import type { Detail, TradeRelation } from './types';
+import type { Detail, TradeRelation, EventItem } from './types';
 import {
   AdjStore, buildEgo, shortestPath, findPath, linkKey,
   type GNode, type GLink, type NodeRec, type Hop,
@@ -16,6 +16,7 @@ import { fetchJSON, loadIndex } from './cache';
 import { favicon, ready, onFaviconLoad } from './favicon';
 import { useMedia } from './useMedia';
 import { buildPrompt, askGemini } from './prompt';
+import { recordView } from './analytics';
 
 const BASE = `${import.meta.env.BASE_URL}data/browser`;
 
@@ -167,18 +168,31 @@ function Launch({ catalog, onPick, onOpenBrowser }: {
               </button>
             </div>
 
-            {/* 公共データ利用規約(PDL1.0)は出典と、加工した旨の明記を求めている */}
-            <div className="ap-footnote" style={{ textAlign: 'center', marginTop: 34, lineHeight: 1.7 }}>
-              <Info size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
-              出典：<a href="https://disclosure2.edinet-fsa.go.jp/" target="_blank" rel="noreferrer"
-                style={{ color: 'var(--blue)' }}>EDINET閲覧サイト</a>（金融庁）、
-              <a href="https://disclosure2dl.edinet-fsa.go.jp/guide/static/submit/WZEK0030.html"
-                target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>PDL1.0</a>
-              <br />
-              有価証券報告書の政策保有株・大株主・主要な顧客・株式事務の記載をもとに作成
-            </div>
+            <About />
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** 臨時報告書1件。提出理由は法令の条項を引く定型文なので、出来事の本文を出す。 */
+function EventRow({ ev }: { ev: EventItem }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="ap-row" style={{ padding: '9px 16px', flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        <Megaphone size={12} className="ter" style={{ flex: '0 0 12px' }} />
+        <span className="ap-headline" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {ev.kind}
+        </span>
+        <a className="ap-footnote" style={{ marginLeft: 'auto', color: 'var(--blue)' }}
+          href={`https://disclosure2dl.edinet-fsa.go.jp/searchdocument/pdf/${ev.doc_id}.pdf`}
+          target="_blank" rel="noreferrer">{ev.submitted?.slice(0, 10)}</a>
+      </div>
+      <div className="ap-footnote ap-purpose" data-open={open}
+        onClick={() => setOpen((v) => !v)} title={open ? '閉じる' : '全文を開く'}>
+        {ev.body}
       </div>
     </div>
   );
@@ -301,6 +315,54 @@ function PathTrace({ hops, catalog, center, purposeOf, onPick }: {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** 出典と、集める情報の説明。
+    公共データ利用規約(PDL1.0)は出典と加工した旨の明記を求めている。
+    閲覧の統計を取る以上、何を集めて何を集めないかも同じ場所に置く。 */
+function About() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="ap-footnote" style={{ textAlign: 'center', marginTop: 34, lineHeight: 1.7 }}>
+      <Info size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
+      出典：<a href="https://disclosure2.edinet-fsa.go.jp/" target="_blank" rel="noreferrer"
+        style={{ color: 'var(--blue)' }}>EDINET閲覧サイト</a>（金融庁）、
+      <a href="https://disclosure2dl.edinet-fsa.go.jp/guide/static/submit/WZEK0030.html"
+        target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>PDL1.0</a>
+      <br />
+      有価証券報告書の政策保有株・大株主・主要な顧客・株式事務の記載をもとに作成
+      <br />
+      <button className="ap-btn ap-btn-plain" style={{ marginTop: 8 }}
+        onClick={() => setOpen((v) => !v)}>
+        このアプリについて {open ? '▲' : '▼'}
+      </button>
+
+      {open && (
+        <div className="ap-card ap-in" style={{ marginTop: 10, padding: '14px 16px', textAlign: 'left' }}>
+          <div className="ap-headline" style={{ marginBottom: 6 }}>扱っている情報</div>
+          <div style={{ lineHeight: 1.75 }}>
+            上場企業が提出した有価証券報告書と臨時報告書から、政策保有株・大株主・
+            主要な顧客・企業サイト・提出書類を機械的に抽出したものです。
+            数値や関係の記述は企業自身の記載をそのまま出しており、こちらで文章を作っていません。
+            投資判断の助言は行いません。
+          </div>
+
+          <div className="ap-headline" style={{ margin: '14px 0 6px' }}>集めている情報</div>
+          <div style={{ lineHeight: 1.75 }}>
+            どの銘柄が何回開かれたか、という数だけを記録しています。
+            利用者を区別する値（ID・Cookie・端末情報・IPアドレス）は作らず、送らず、保存しません。
+            誰が見たかは分からない作りです。
+          </div>
+
+          <div className="ap-headline" style={{ margin: '14px 0 6px' }}>使っている技術</div>
+          <div style={{ lineHeight: 1.75 }}>
+            2回目以降の表示は端末内に保存した内容を使うため、通信が発生しません。
+            ホーム画面に追加すると、機内でも起動します。
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -442,6 +504,17 @@ function Inspector({ code, catalog, detail, onClose, onCenter, wide, onToggleWid
                       <span className="ap-footnote">{n.published} · {n.source}</span>
                     </span>
                   </a>
+                ))}
+              </>
+            )}
+
+            {detail.events?.length > 0 && (
+              <>
+                <div className="ap-sidebar-label" style={{ padding: '14px 16px 5px' }}>
+                  最近の出来事（臨時報告書）
+                </div>
+                {detail.events.slice(0, 5).map((e, i) => (
+                  <EventRow key={i} ev={e} />
                 ))}
               </>
             )}
@@ -754,6 +827,7 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
       setDetail(null);
       return;
     }
+    recordView(code);
     const shard = await loadShard(code);
     setDetail(shard[code] ?? null);
     ensurePurpose(code);

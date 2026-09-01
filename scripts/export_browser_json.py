@@ -262,6 +262,7 @@ def main():
               if _has(con, "filings_recent") else pd.DataFrame())
     customers = (con.execute("SELECT * FROM customers").df()
                  if _has(con, "customers") else pd.DataFrame())
+    events = con.execute("SELECT * FROM events").df() if _has(con, "events") else pd.DataFrame()
     con.close()
 
     if not len(fins):
@@ -378,6 +379,24 @@ def main():
                     "title": r.title, "link": r.link, "source": r.source,
                     "published": r.published, "fetched_at": r.fetched_at,
                 })
+
+    # 臨時報告書の出来事。主要株主の異動・合併の決定など、報道になる事柄そのもの。
+    # 提出理由は定型文（法令の条項を引くだけ）なので、出来事の本文がある行を優先する。
+    events_by_code = defaultdict(list)
+    if len(events):
+        for r in events.sort_values("submitted", ascending=False).itertuples():
+            c = norm_code(r.sec_code)
+            if not c:
+                continue
+            # DuckDB を経由すると入れ子は numpy 配列で返るので、list 判定では弾かれる
+            evs = list(r.events) if r.events is not None and len(r.events) else []
+            if not evs:
+                continue
+            events_by_code[c].append({
+                "doc_id": r.doc_id, "submitted": r.submitted,
+                "kind": evs[0].get("kind"),
+                "body": (evs[0].get("body") or "")[:400],
+            })
 
     # EDINET の提出書類。ニュースの代替として「最近の動き」を示す
     recent_by_code = defaultdict(list)
@@ -498,6 +517,7 @@ def main():
             "disclosures": disc_by_code.get(code, [])[:20],
             "news": news_by_code.get(code, [])[:12],
             "filings": recent_by_code.get(code, [])[:12],
+            "events": events_by_code.get(code, [])[:8],
             "sells_to": sorted(sells_to.get(code, []),
                                key=lambda x: -(x["amount"] or 0))[:20],
             "buys_from": sorted(buys_from.get(code, []),

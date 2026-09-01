@@ -95,6 +95,14 @@ export interface FilingItem {
   doc_type: string;
 }
 
+export interface EventItem {
+  doc_id: string;
+  submitted: string;
+  /** 「主要株主の異動」「吸収合併の決定」など、臨時報告書の記載区分 */
+  kind: string;
+  body: string;
+}
+
 export interface TradeItem {
   code: string | null;
   name: string | null;
@@ -139,6 +147,7 @@ export interface Detail extends Summary {
   disclosures: Disclosure[];
   news: NewsItem[];
   filings: FilingItem[];
+  events: EventItem[];
   sells_to: TradeItem[];
   trade: TradeRelation[];
   buys_from: TradeItem[];
