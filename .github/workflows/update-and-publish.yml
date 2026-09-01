@@ -26,6 +26,10 @@ on:
     branches: [main]
     paths:
       - 'data/**'          # 手元で取り込んだ有報を push したとき
+      - 'frontend/**'      # 画面を直したとき
+      - 'scripts/**'       # 書き出しの内容を変えたとき
+      - 'src/**'
+      - '.github/workflows/update-and-publish.yml'
   workflow_dispatch:
     inputs:
       edinet:
