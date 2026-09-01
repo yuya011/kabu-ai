@@ -19,9 +19,14 @@ export function recordView(code: string) {
   sent.add(code);
   const body = JSON.stringify({ code });
   try {
-    // ページ遷移や離脱に巻き込まれず、描画も止めない
+    // ページ遷移や離脱に巻き込まれず、描画も止めない。
+    //
+    // Blob の型は text/plain にする。application/json は CORS の単純リクエストから
+    // 外れるためプリフライトが要るが、sendBeacon はそれを処理できず、
+    // true を返したまま黙って送信を捨てる。受け側は Content-Type を見ずに
+    // 本文を JSON として読むので、text/plain のままで問題ない。
     if (navigator.sendBeacon) {
-      navigator.sendBeacon(`${ENDPOINT}/view`, new Blob([body], { type: 'application/json' }));
+      navigator.sendBeacon(`${ENDPOINT}/view`, new Blob([body], { type: 'text/plain' }));
       return;
     }
     fetch(`${ENDPOINT}/view`, {

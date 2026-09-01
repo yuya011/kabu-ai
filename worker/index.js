@@ -35,6 +35,9 @@ export default {
     }
 
     if (url.pathname === '/view' && request.method === 'POST') {
+      // 送り側は sendBeacon を text/plain で送る。application/json だと
+      // CORS のプリフライトが必要になり、ビーコンが黙って捨てられるため。
+      // ここでは Content-Type を見ずに本文を JSON として読む。
       let code;
       try {
         ({ code } = await request.json());
