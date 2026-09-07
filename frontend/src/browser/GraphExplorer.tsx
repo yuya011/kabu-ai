@@ -17,6 +17,7 @@ import { favicon, ready, onFaviconLoad } from './favicon';
 import { useMedia } from './useMedia';
 import { buildPrompt, askGemini } from './prompt';
 import { recordView } from './analytics';
+import AdSlot from './AdSlot';
 
 const BASE = `${import.meta.env.BASE_URL}data/browser`;
 
@@ -161,6 +162,8 @@ function Launch({ catalog, onPick, onOpenBrowser }: {
                 );
               })}
             </div>
+            <AdSlot slot="1111111111" format="horizontal" style={{ marginTop: 26 }} />
+
             <div style={{ textAlign: 'center', marginTop: 30 }}>
               <button className="ap-btn ap-btn-plain" onClick={onOpenBrowser}>
                 <Building2 size={12} style={{ verticalAlign: -1, marginRight: 5 }} />
@@ -577,6 +580,9 @@ function Inspector({ code, catalog, detail, onClose, onCenter, wide, onToggleWid
             )}
           </>
         )}
+
+        {/* 一番下に置く。グラフの操作にも、上のリンクの誤タップにもかからない位置 */}
+        <AdSlot slot="2222222222" style={{ margin: '16px 12px 12px' }} />
       </div>
     </div>
   );

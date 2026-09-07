@@ -99,13 +99,49 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      # 独自ドメインに移すときは、リポジトリ変数 CUSTOM_DOMAIN に
+      # ドメイン名（例 kabu-graph.com）を入れるだけでよい。
+      # 未設定なら従来どおり <user>.github.io/<repo>/ で配信する。
+      #
+      # AdSense は自分で取得したドメインでないと審査を受けられない。
+      # github.io は GitHub が持つ共有ドメインなので、ここを設定するまで
+      # 広告は出ない（枠も描かない）。
+      - name: 配信先の決定
+        id: site
+        env:
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+        run: |
+          if [ -n "$CUSTOM_DOMAIN" ]; then
+            echo "base=/" >> "$GITHUB_OUTPUT"
+            echo "$CUSTOM_DOMAIN" > frontend/public/CNAME
+            echo "独自ドメイン: $CUSTOM_DOMAIN"
+          else
+            echo "base=/${{ github.event.repository.name }}/" >> "$GITHUB_OUTPUT"
+            rm -f frontend/public/CNAME
+            echo "GitHub Pages の既定のドメインで配信します"
+          fi
+
+      # AdSense は発行元IDを ads.txt で照合する。ドメイン直下に置く必要がある。
+      - name: ads.txt の生成
+        env:
+          PUB_ID: ${{ vars.ADSENSE_PUBLISHER_ID }}
+        run: |
+          if [ -n "$PUB_ID" ]; then
+            echo "google.com, $PUB_ID, DIRECT, f08c47fec0942fa0" > frontend/public/ads.txt
+            echo "ads.txt を生成しました"
+          else
+            rm -f frontend/public/ads.txt
+          fi
+
       - name: フロントエンドのビルド
         working-directory: frontend
         env:
-          VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_BASE: ${{ steps.site.outputs.base }}
           VITE_PUBLIC: '1'
           # 閲覧統計の送り先。未設定なら何も送らない（worker/ を参照）
           VITE_ANALYTICS_URL: https://kabu-stats.yuya011.workers.dev
+          # AdSense の発行元ID。未設定なら広告の枠そのものを描かない
+          VITE_ADSENSE_CLIENT: ${{ vars.ADSENSE_PUBLISHER_ID }}
         run: |
           npm ci
           npm run build

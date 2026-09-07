@@ -657,3 +657,14 @@
 .ap-ask:hover:not(:disabled) { background: color-mix(in srgb, var(--indigo) 18%, transparent); }
 .ap-ask:active:not(:disabled) { transform: scale(0.985); }
 .ap-ask:disabled { color: var(--label-tertiary); background: var(--fill-quaternary); }
+
+/* 広告枠。本文と地続きに見えないよう、囲って「広告」と明示する。
+   誤タップを避けるため、操作要素からは離して置く。 */
+.ap-ad {
+  background: var(--bg-grouped-elevated);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
+  padding: 10px 12px 12px;
+  overflow: hidden;
+}
+.ap-ad .ap-caption { letter-spacing: 0.06em; }

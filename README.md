@@ -201,3 +201,21 @@ VITE_ANALYTICS_URL=https://kabu-stats.yuya011.workers.dev npm run build
 
 公開ビルドでは [.github/workflows/update-and-publish.yml](.github/workflows/update-and-publish.yml) が
 この値を渡している。手元の `npm run dev` では未設定なので何も送らない。
+
+## 💰 広告（未設定）
+
+広告は発行元IDが設定されているときだけ描く。未設定なら枠も出さないし、
+ビルドにコードも残らない（Vite が丸ごと落とす）。
+
+**AdSense は自分で取得したドメインでないと審査を受けられない。**
+`github.io` は GitHub が持つ共有ドメインなので、独自ドメインへ移すまで設定できない。
+
+移行はリポジトリ変数を2つ入れるだけでよい。
+
+| 変数 | 例 | 効果 |
+|---|---|---|
+| `CUSTOM_DOMAIN` | `kabu-graph.com` | CNAME を書き、base を `/` に切り替える |
+| `ADSENSE_PUBLISHER_ID` | `ca-pub-...` | ads.txt を生成し、広告枠を描く |
+
+設定場所は Settings → Secrets and variables → Actions → Variables。
+ドメイン側では、GitHub Pages の IP へ A レコードを向ける（または CNAME を `<user>.github.io` へ）。
