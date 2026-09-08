@@ -66,7 +66,18 @@ export function buildPrompt({ rec, code, detail, path }: PromptContext): string 
   if (detail?.domain) L.push(`公式サイト: https://${detail.domain}`);
   L.push('');
 
-  if (detail && detail.sales != null) {
+  if (detail?.results?.length) {
+    const ifrs = detail.standard && detail.standard !== 'Japan GAAP';
+    L.push(`【業績の推移（有価証券報告書「主要な経営指標等の推移」・${detail.basis ?? ''}`
+      + `${detail.standard ? `・${detail.standard}` : ''}）】`);
+    for (const r of detail.results) {
+      L.push(`- ${r.label}期: 売上 ${oku(r.sales)} / 営業利益 ${oku(r.op)}`
+        + ` / ${ifrs ? '税引前利益' : '経常利益'} ${oku(r.pretax)} / 純利益 ${oku(r.np)}`
+        + ` / 自己資本比率 ${pct(r.equity_ratio)}`
+        + `${r.employees != null ? ` / 従業員 ${r.employees.toLocaleString()}人` : ''}`);
+    }
+    L.push('');
+  } else if (detail && detail.sales != null) {
     L.push(`【直近決算（${detail.disc_date ?? ''} 開示・${detail.period ?? ''}）】`);
     L.push(`売上高 ${oku(detail.sales)} / 営業利益 ${oku(detail.op)}（利益率 ${pct(detail.op_margin)}）`
       + ` / 純利益 ${oku(detail.np)} / 自己資本比率 ${pct(detail.equity_ratio)}`);

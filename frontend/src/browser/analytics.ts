@@ -9,12 +9,17 @@
  * 集計基盤を立てる前でもアプリはそのまま動く。
  */
 
+import { getSettings } from '../settings';
+
 const ENDPOINT = import.meta.env.VITE_ANALYTICS_URL as string | undefined;
 
 /** 同じ会社を何度も開いても1セッション1回だけ数える */
 const sent = new Set<string>();
 
 export function recordView(code: string) {
+  // 設定で切れる。識別子を持たないので個人情報の同意は要らないが、
+  // 送られること自体を嫌う人はいるので、断れるようにしておく。
+  if (!getSettings().analytics) return;
   if (!ENDPOINT || !code || sent.has(code)) return;
   sent.add(code);
   const body = JSON.stringify({ code });

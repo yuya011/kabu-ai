@@ -18,6 +18,9 @@ source .venv/bin/activate
 echo "▸ 有価証券報告書の取り込み（差分のみ・台帳で既取得分は飛ばす）"
 python scripts/edinet_ingest.py --months 14
 
+echo "▸ 業績の組み直し（取り込んだ XBRL から・API は叩かない）"
+python scripts/extract_financials.py
+
 echo "▸ 倉庫の構築（公開版・J-Quants 由来を含めない）"
 python scripts/build_warehouse.py --public
 

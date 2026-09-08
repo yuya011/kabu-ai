@@ -117,6 +117,7 @@ python scripts/tdnet_scraper.py
 
 ```bash
 python scripts/edinet_ingest.py --months 13     # 有報の取り込み（要 EDINET_API）
+python scripts/extract_financials.py            # 業績を XBRL から組み直す（APIは叩かない）
 python scripts/news_ingest.py --all --rotate 7  # ニュース（日次・7日で一周）
 python scripts/build_warehouse.py               # data/kabu.duckdb を構築
 python scripts/export_browser_json.py           # 配信 JSON を書き出し
@@ -125,6 +126,7 @@ cd frontend && npm install && npm run dev
 
 | 項目 | 規模 |
 |---|---|
+| 業績を取れた企業 | 3,822（5期ぶん） |
 | ノード（上場企業） | 3,330 |
 | 有向エッジ | 35,128 |
 | 保有目的が付いたエッジ | 97.1% |
@@ -136,6 +138,7 @@ cd frontend && npm install && npm run dev
 | 出所 | 内容 | 公開版 |
 |---|---|---|
 | EDINET | 有報の政策保有・保有目的・大株主・企業ドメイン・社名・業種 | ◯ |
+| EDINET | 有報「主要な経営指標等の推移」の業績（売上・利益・自己資本比率・従業員数） | ◯ |
 | Google ニュース RSS | 企業別の報道見出し（取得日時つき） | ◯ |
 | TDnet | 適時開示のタイトル | ◯ |
 | **J-Quants** | 決算数値・市場区分・TOPIX規模区分・サプライズ特徴量 | **✕** |
@@ -147,6 +150,22 @@ cd frontend && npm install && npm run dev
 
 手元で全部入りを見るときは `--public` を外してください。決算・サプライズ・検証ダッシュボードが有効になります。
 本リポジトリには J-Quants 由来のデータファイルを含めていません。
+
+### 業績は有報から取り直している
+
+J-Quants を載せられないぶんの穴は、有報の XBRL で埋めてある。
+「主要な経営指標等の推移」には5期ぶんの売上・利益・自己資本比率・ROE・従業員数がタグ付けされていて、
+`scripts/extract_financials.py` が取り込み済みのキャッシュ（`data/edinet_cache/*.tsv`）から組み直す。
+API は叩かないので、何度でもやり直せる。
+
+| 項目 | 取得率 | 備考 |
+|---|---|---|
+| 売上高 | 99.1% | 銀行は経常収益、保険は正味収入保険料で代替。会社独自タグにも対応 |
+| 純利益・自己資本比率 | 99.1% | |
+| 営業利益 | 95.5% | 推移表に無いため損益計算書から取る。**直近2期のみ** |
+| 1株配当 | 83.0% | 提出会社（単体）の指標として載る |
+
+年1回の開示なので四半期の粒度は落ちる。ここは J-Quants と引き換えに諦めた点である。
 
 ## 🔄 更新の運用
 
@@ -179,6 +198,24 @@ App Store の審査も年会費も要りません。
 
 配信 JSON は端末内（IndexedDB）に版付きで持ち、画面の外枠は Service Worker が持ちます。
 両方で 40MB を抱えないよう、担当を分けてあります。
+
+## ⚙️ 設定（端末ごと）
+
+配色・文字の大きさ・検索エンジン・閲覧統計の可否を端末内に保存する。サーバは持たない。
+
+**AI は Gemini・Claude・ChatGPT から選べる。** API キーを入れるとアプリの中に答えが流れ、
+入れなければ選んだ提供元のチャット画面がプロンプトつきで開く。
+キーとモデルは提供元ごとに別々に覚える。キーは `localStorage` にだけ置き、
+通信は端末から各社へ直接出る。このサイトに受け口が無いので、キーがこちら側を通ることはない。
+
+| 提供元 | ブラウザから直接呼べるか | 備考 |
+|---|---|---|
+| Gemini | ◯ | 無料枠あり。既定は `gemini-3.8-flash` |
+| Claude | ◯（`anthropic-dangerous-direct-browser-access` ヘッダが要る） | 従量課金のみ。既定は `claude-opus-5` |
+| ChatGPT | △ | 従量課金のみ。**キーを拒むときだけ CORS ヘッダが返らない**ため、疎通確認は `/v1/models` で行う |
+| X（Twitter） | ✕ | プリフライトが 405 で CORS ヘッダも無い。入力欄を置いていない |
+
+モデル名は各社の都合で増減するので、一覧から選ぶほかに直接書ける。
 
 ## 📈 閲覧統計（任意）
 

@@ -1,14 +1,33 @@
 <!doctype html>
-<html lang="ja" class="dark">
+<html lang="ja">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kabu-AI 企業ブラウザ</title>
     <meta name="description" content="有価証券報告書から、上場企業の資本と商流のつながりを辿る" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <!-- iOS はテーマ色を配色ごとに読む -->
-    <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <!-- 配色は設定で固定できるので、テーマ色もメディアクエリではなく JS が書き換える -->
+    <meta name="theme-color" content="#f2f2f7" />
+    <script>
+      /* 最初の描画より前に配色と文字の大きさを当てる。
+         React を待つと、明るいまま一瞬光ってから暗くなる。
+         読み方は src/settings.ts と揃えてある（ここだけは束ねる前に動く必要がある）。 */
+      (function () {
+        try {
+          var s = JSON.parse(localStorage.getItem('kabu-ai.settings') || '{}');
+          var t = s.theme === 'light' || s.theme === 'dark' ? s.theme
+            : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          var r = document.documentElement;
+          r.dataset.theme = t;
+          r.style.colorScheme = t;
+          r.classList.toggle('dark', t === 'dark');
+          if (typeof s.fontScale === 'number') r.style.setProperty('--fs', String(s.fontScale));
+          if (s.reduceMotion) r.dataset.motion = 'reduce';
+          var m = document.querySelector('meta[name=theme-color]');
+          if (m) m.setAttribute('content', t === 'dark' ? '#000000' : '#f2f2f7');
+        } catch (e) { /* 読めなくてもアプリは動く */ }
+      })();
+    </script>
     <!-- ホーム画面から起動したときに Safari の枠を出さない -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

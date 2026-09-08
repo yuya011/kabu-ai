@@ -35,6 +35,31 @@ export interface FinancialRow {
   f_np: number | null;
 }
 
+/** 有報「主要な経営指標等の推移」の1期ぶん。年1回・5期まで。 */
+export interface ResultRow {
+  /** 決算期。「2026/03」の形 */
+  label: string;
+  /** 当期 / 1期前 … */
+  rel: string;
+  sales: number | null;
+  /** 営業利益。推移表には載らないので損益計算書から取る。当期と前期だけ */
+  op: number | null;
+  /** 日本基準は経常利益、IFRS・米国基準は税引前利益 */
+  pretax: number | null;
+  np: number | null;
+  assets: number | null;
+  equity: number | null;
+  equity_ratio: number | null;
+  eps: number | null;
+  bps: number | null;
+  roe: number | null;
+  per: number | null;
+  dividend: number | null;
+  /** 営業活動によるキャッシュ・フロー */
+  ocf: number | null;
+  employees: number | null;
+}
+
 export interface SurpriseRow {
   date: string;
   period: string;
@@ -139,6 +164,13 @@ export interface Detail extends Summary {
   eps: number | null;
   bps: number | null;
   equity_ratio: number | null;
+  /** 有報の業績。新しい期から順に並ぶ */
+  results: ResultRow[];
+  /** 会計基準（Japan GAAP / IFRS / US GAAP）。利益の名前がこれで変わる */
+  standard: string | null;
+  /** 連結 / 個別 */
+  basis: string | null;
+  results_submitted: string | null;
   financials: FinancialRow[];
   surprises: SurpriseRow[];
   holdings: Holding[];
@@ -179,6 +211,9 @@ export interface BrowserIndex {
     surprise_count: number;
     holding_count: number;
     holding_companies: number;
+    customer_count?: number;
+    /** 有報から業績を取れた会社数 */
+    annual_companies?: number;
   };
   sectors: SectorTile[];
   /** [証券コード, 社名, 17業種コード, 33業種名, ドメイン] */

@@ -4,10 +4,10 @@ import {
   Search, X, ArrowLeft, ExternalLink, FileText, LineChart,
   Globe, Network, Loader2, Building2, Newspaper, ChevronsLeft, ChevronsRight,
   SlidersHorizontal, CornerDownRight, Route, Crosshair, Sparkles, Check,
-  ScrollText, Info, Megaphone,
+  ScrollText, Info, Megaphone, Settings as SettingsIcon, CircleStop, BarChart3,
 } from 'lucide-react';
 import './apple.css';
-import type { Detail, TradeRelation, EventItem } from './types';
+import type { Detail, ResultRow, TradeRelation, EventItem } from './types';
 import {
   AdjStore, buildEgo, shortestPath, findPath, linkKey,
   type GNode, type GLink, type NodeRec, type Hop,
@@ -15,8 +15,11 @@ import {
 import { fetchJSON, loadIndex } from './cache';
 import { favicon, ready, onFaviconLoad } from './favicon';
 import { useMedia } from './useMedia';
-import { buildPrompt, askGemini } from './prompt';
+import { buildPrompt } from './prompt';
+import { ask as askAi, openChat, PROVIDERS } from './ai';
+import { openSearch } from './search';
 import { recordView } from './analytics';
+import { useSettings, resolveTheme, currentAi } from '../settings';
 import AdSlot from './AdSlot';
 
 const BASE = `${import.meta.env.BASE_URL}data/browser`;
@@ -58,6 +61,23 @@ function Tip({ tip, pos, children, style }: {
   );
 }
 
+/** 社名で外部検索を開く小さなボタン。
+
+    非上場の相手はこちらに情報が無いので、名前を渡して外で調べてもらう。
+    上場企業に付けても害はないので、相手の別を問わず同じ位置に出す。 */
+function SearchBtn({ name, tip = 'この社名で検索', pos }: {
+  name: string; tip?: string; pos?: 'top' | 'left';
+}) {
+  return (
+    <Tip tip={tip} pos={pos}>
+      <button className="ap-iconbtn" aria-label={tip}
+        onClick={(e) => { e.stopPropagation(); openSearch(name); }}>
+        <Search size={12} />
+      </button>
+    </Tip>
+  );
+}
+
 function Favi({ domain, name, color, size = 22 }: {
   domain: string; name: string; color: string; size?: number;
 }) {
@@ -74,16 +94,20 @@ function Favi({ domain, name, color, size = 22 }: {
   );
 }
 
+/** APIキーを入れている場合の、生成中〜生成後の状態 */
+interface Answer { text: string; busy: boolean; error?: string }
+
 /** 保有目的から読める取引の性質。番号は書き出し側と合わせてある */
 const REL_NAME: Record<number, string> = {
   1: '仕入先', 2: '販売先', 3: '業務提携', 4: '金融取引',
 };
 
 /* ---------------- 検索起点のトップ ---------------- */
-function Launch({ catalog, onPick, onOpenBrowser }: {
+function Launch({ catalog, onPick, onOpenBrowser, onOpenSettings }: {
   catalog: Map<string, NodeRec>;
   onPick: (code: string) => void;
   onOpenBrowser: () => void;
+  onOpenSettings: () => void;
 }) {
   const [q, setQ] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -114,6 +138,11 @@ function Launch({ catalog, onPick, onOpenBrowser }: {
 
   return (
     <div className="ap ap-launch">
+      <Tip tip="設定" pos="left" style={{ position: 'absolute', top: 14, right: 16, zIndex: 5 }}>
+        <button className="ap-iconbtn ap-iconbtn-lg" aria-label="設定" onClick={onOpenSettings}>
+          <SettingsIcon size={19} />
+        </button>
+      </Tip>
       <div className="ap-launch-inner ap-in">
         <div style={{ textAlign: 'center', marginBottom: 26 }}>
           <h1 className="ap-large-title" style={{ fontSize: 32 }}>企業のつながりを見る</h1>
@@ -211,14 +240,26 @@ function TradeRow({ rel, onClick }: { rel: TradeRelation; onClick?: () => void }
       style={{ padding: '8px 16px', flexDirection: 'column', alignItems: 'stretch', gap: 3 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
         <span className={`ap-badge ${tone}`} style={{ flex: '0 0 auto' }}>{rel.direction}</span>
-        <span className="ap-body" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'default' }}
+        <span className="ap-body" style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'default' }}
           onClick={onClick}>
           {rel.name}
         </span>
-        {rel.segment && <span className="ap-badge">{rel.segment}</span>}
-        {rel.amount != null && (
-          <span className="ap-num sec" style={{ marginLeft: 'auto', fontSize: 11 }}>{oku(rel.amount)}</span>
+        {/* セグメント名は「日本、北米、中国、欧州…」と長いものがある。
+            社名より先に削られないよう、上限を決めて省略する */}
+        {rel.segment && (
+          <span className="ap-badge" style={{ display: 'inline-block', maxWidth: '38%',
+            minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}
+            title={rel.segment}>{rel.segment}</span>
         )}
+        {rel.amount != null && (
+          <span className="ap-num sec"
+            style={{ marginLeft: 'auto', fontSize: 11, whiteSpace: 'nowrap' }}>
+            {oku(rel.amount)}
+          </span>
+        )}
+        <span style={rel.amount != null ? undefined : { marginLeft: 'auto' }}>
+          <SearchBtn name={rel.name ?? ''} pos="left" />
+        </span>
       </div>
       {rel.note && (
         <div className="ap-footnote ap-purpose" data-open={open}
@@ -253,6 +294,7 @@ function HoldingRow({ name, value, purpose, mutual, onClick }: {
           </Tip>
         )}
         <span className="ap-num sec" style={{ marginLeft: 'auto', fontSize: 11 }}>{oku(value)}</span>
+        <SearchBtn name={name} pos="left" />
       </div>
       {purpose && (
         <div className="ap-footnote ap-purpose" data-open={open}
@@ -262,6 +304,83 @@ function HoldingRow({ name, value, purpose, mutual, onClick }: {
         </div>
       )}
     </div>
+  );
+}
+
+/** 業績。有報「主要な経営指標等の推移」から5期ぶん。
+
+    決算短信ではないので年1回しか動かない代わりに、全上場企業ぶんが同じ形で揃う。
+    営業利益だけは推移表に無く損益計算書から取るので、直近2期しかない。 */
+function Results({ d }: { d: Detail }) {
+  const rows = d.results ?? [];
+  const cur = rows[0];
+  // 日本基準は経常利益、IFRS・米国基準は税引前利益。別物なので名前を変える
+  const pretaxLabel = d.standard && d.standard !== 'Japan GAAP' ? '税引前利益' : '経常利益';
+
+  return (
+    <>
+      <div className="ap-sidebar-label"
+        style={{ padding: '14px 16px 5px', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <BarChart3 size={11} /> 業績
+        {cur && (
+          <span className="ap-footnote"
+            style={{ marginLeft: 'auto', textTransform: 'none', letterSpacing: 0 }}>
+            {cur.label}期{d.basis ? ` · ${d.basis}` : ''}
+          </span>
+        )}
+      </div>
+
+      <dl className="ap-kvgrid" style={{ margin: 0 }}>
+        <div className="ap-kv"><dt>売上高</dt><dd className="ap-num">{oku(d.sales)}</dd></div>
+        <div className="ap-kv"><dt>営業利益</dt><dd className="ap-num">{oku(d.op)}</dd></div>
+        <div className="ap-kv"><dt>営業利益率</dt><dd className="ap-num">{pct(d.op_margin)}</dd></div>
+        <div className="ap-kv"><dt>純利益</dt><dd className="ap-num">{oku(d.np)}</dd></div>
+        <div className="ap-kv"><dt>自己資本比率</dt><dd className="ap-num">{pct(d.equity_ratio)}</dd></div>
+        <div className="ap-kv"><dt>ROE</dt><dd className="ap-num">{pct(cur?.roe)}</dd></div>
+        <div className="ap-kv"><dt>1株配当</dt>
+          <dd className="ap-num">{cur?.dividend != null ? `${cur.dividend}円` : '—'}</dd></div>
+        <div className="ap-kv"><dt>従業員数</dt>
+          <dd className="ap-num">
+            {cur?.employees != null ? `${cur.employees.toLocaleString()}人` : '—'}
+          </dd></div>
+        <div className="ap-kv"><dt>決算期</dt><dd>{d.fiscal_year_end || '—'}</dd></div>
+        {d.market && <div className="ap-kv"><dt>市場</dt><dd>{d.market}</dd></div>}
+      </dl>
+
+      {rows.length > 1 && (
+        <div style={{ padding: '6px 12px 0', overflowX: 'auto' }}>
+          <table className="ap-table ap-table-tight">
+            <thead>
+              <tr>
+                <th>期</th><th>売上高</th><th>{pretaxLabel}</th>
+                <th>純利益</th><th>自己資本比率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r: ResultRow) => (
+                <tr key={r.label + r.rel}>
+                  <td className="ap-num">{r.label}</td>
+                  <td className="ap-num">{oku(r.sales)}</td>
+                  <td className={`ap-num ${r.pretax != null && r.pretax < 0 ? 'neg' : ''}`}>
+                    {oku(r.pretax)}
+                  </td>
+                  <td className={`ap-num ${r.np != null && r.np < 0 ? 'neg' : ''}`}>{oku(r.np)}</td>
+                  <td className="ap-num">{pct(r.equity_ratio)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div className="ap-footnote" style={{ padding: '7px 16px 0', lineHeight: 1.55 }}>
+          有価証券報告書「主要な経営指標等の推移」
+          {d.results_submitted ? `（${d.results_submitted} 提出）` : ''}より。
+          年1回の開示なので、四半期の動きは映りません。
+        </div>
+      )}
+    </>
   );
 }
 
@@ -372,7 +491,7 @@ function About() {
 
 /* ---------------- インスペクタ ---------------- */
 function Inspector({ code, catalog, detail, onClose, onCenter, wide, onToggleWide, width,
-  path, center, purposeOf, onAsk, asked }: {
+  path, center, purposeOf, onAsk, asked, aiLabel, answer, onCloseAnswer }: {
   code: string;
   catalog: Map<string, NodeRec>;
   detail: Detail | null;
@@ -386,6 +505,11 @@ function Inspector({ code, catalog, detail, onClose, onCenter, wide, onToggleWid
   purposeOf: (holder: string, held: string) => string | null;
   onAsk: () => void;
   asked: 'copied' | 'opened' | null;
+  /** 設定で選ばれている提供元の名前。Gemini / Claude / ChatGPT */
+  aiLabel: string;
+  /** APIキーを入れている場合、答えはこの中に流れてくる */
+  answer: Answer | null;
+  onCloseAnswer: () => void;
 }) {
   const rec = catalog.get(code);
   if (!rec) return null;
@@ -417,6 +541,7 @@ function Inspector({ code, catalog, detail, onClose, onCenter, wide, onToggleWid
               )}
             </div>
           </div>
+          <SearchBtn name={rec.name} pos="left" />
           <Tip tip={wide ? 'パネルを狭める' : 'パネルを広げる'} pos="left">
             <button className="ap-btn ap-btn-plain" onClick={onToggleWide} style={{ padding: 3 }}>
               {wide ? <ChevronsRight size={15} /> : <ChevronsLeft size={15} />}
@@ -428,23 +553,48 @@ function Inspector({ code, catalog, detail, onClose, onCenter, wide, onToggleWid
 
       <div className="ap-inspector-body">
         {unlisted && (
-          <div className="ap-footnote" style={{ padding: '12px 16px', lineHeight: 1.6 }}>
-            上場していないため、決算や開示の情報は扱っていません。
-            上場企業の有価証券報告書に相手として記載されている関係だけを表示しています。
-            この会社を中心にすることはできません。
-          </div>
+          <>
+            <div className="ap-footnote" style={{ padding: '12px 16px 10px', lineHeight: 1.6 }}>
+              上場していないため、決算や開示の情報は扱っていません。
+              上場企業の有価証券報告書に相手として記載されている関係だけを表示しています。
+              この会社を中心にすることはできません。
+            </div>
+            <button className="ap-ask" onClick={() => openSearch(rec.name)}>
+              <Search size={13} /> この会社を検索する
+            </button>
+            <div className="ap-footnote" style={{ padding: '0 16px 10px' }}>
+              有報が無い相手はこちらに情報がありません。社名で外を当たってください。
+            </div>
+          </>
         )}
 
         {!unlisted && (
-        <><button className="ap-ask" onClick={onAsk} disabled={!detail}>
-          {asked ? <Check size={13} /> : <Sparkles size={13} />}
-          {asked === 'copied' ? 'プロンプトをコピーしました'
-            : asked === 'opened' ? 'Gemini を開きました'
-            : path && path.length > 0 ? 'このつながりを Gemini に聞く' : 'この会社を Gemini に聞く'}
+        <><button className="ap-ask" onClick={onAsk} disabled={!detail || !!answer?.busy}>
+          {answer?.busy ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+            : asked ? <Check size={13} /> : <Sparkles size={13} />}
+          {answer?.busy ? '聞いています…'
+            : asked === 'copied' ? 'プロンプトをコピーしました'
+            : asked === 'opened' ? `${aiLabel} を開きました`
+            : path && path.length > 0 ? `このつながりを ${aiLabel} に聞く`
+            : `この会社を ${aiLabel} に聞く`}
         </button>
-        <div className="ap-footnote" style={{ padding: '0 16px 10px' }}>
-          有報から抜いた決算・政策保有・保有目的を添えて開きます
-        </div></>
+        {answer ? (
+          <div className={`ap-answer${answer.error ? ' ap-answer-err' : ''}`}>
+            <div className="ap-answer-head">
+              <Sparkles size={10} />
+              {answer.error ? '答えられませんでした' : `${aiLabel} の答え`}
+              <button className="ap-iconbtn" style={{ marginLeft: 'auto' }}
+                aria-label="閉じる" onClick={onCloseAnswer}>
+                {answer.busy ? <CircleStop size={13} /> : <X size={13} />}
+              </button>
+            </div>
+            {answer.error ?? answer.text}
+          </div>
+        ) : (
+          <div className="ap-footnote" style={{ padding: '0 16px 10px' }}>
+            有報から抜いた業績・政策保有・保有目的を添えて渡します
+          </div>
+        )}</>
         )}
 
         {path && path.length > 0 && (
@@ -483,15 +633,7 @@ function Inspector({ code, catalog, detail, onClose, onCenter, wide, onToggleWid
 
         {detail && (
           <>
-            <div className="ap-sidebar-label" style={{ padding: '14px 16px 5px' }}>業績</div>
-            <dl className="ap-kvgrid" style={{ margin: 0 }}>
-              <div className="ap-kv"><dt>売上高</dt><dd className="ap-num">{oku(detail.sales)}</dd></div>
-              <div className="ap-kv"><dt>営業利益</dt><dd className="ap-num">{oku(detail.op)}</dd></div>
-              <div className="ap-kv"><dt>営業利益率</dt><dd className="ap-num">{pct(detail.op_margin)}</dd></div>
-              <div className="ap-kv"><dt>自己資本比率</dt><dd className="ap-num">{pct(detail.equity_ratio)}</dd></div>
-              <div className="ap-kv"><dt>市場</dt><dd>{detail.market || '—'}</dd></div>
-              <div className="ap-kv"><dt>決算期</dt><dd>{detail.fiscal_year_end || '—'}</dd></div>
-            </dl>
+            <Results d={detail} />
 
             {detail.news.length > 0 && (
               <>
@@ -672,7 +814,11 @@ function Controls({ depth, setDepth, hold, setHold, major, setMajor,
 }
 
 /* ---------------- 本体 ---------------- */
-export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => void }) {
+export default function GraphExplorer({ onOpenBrowser, onOpenSettings }: {
+  onOpenBrowser: () => void;
+  onOpenSettings: () => void;
+}) {
+  const settings = useSettings();
   const [catalog, setCatalog] = useState<Map<string, NodeRec> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [center, setCenter] = useState<string | null>(null);
@@ -691,6 +837,8 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
   const [tracing, setTracing] = useState(false);
   const [traceMiss, setTraceMiss] = useState<string | null>(null);
   const [asked, setAsked] = useState<'copied' | 'opened' | null>(null);
+  const [answer, setAnswer] = useState<Answer | null>(null);
+  const askAbort = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -714,8 +862,8 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [, bumpFavicon] = useState(0);
 
-  const dark = useMemo(
-    () => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false, []);
+  // 設定で固定できるので、OS の指定を直接見ずに解決済みの配色を使う
+  const dark = resolveTheme(settings.theme) === 'dark';
 
   useEffect(() => onFaviconLoad(() => bumpFavicon((n) => n + 1)), []);
 
@@ -874,6 +1022,14 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
     }
   }, [center, data, catalog, loadDetail]);
 
+  /* 行から相手を開く。上場なら中心を移し、非上場は選ぶだけにする。
+     非上場は中心に置けないと画面で言っている以上、行から入ったときだけ
+     置けてしまうのは辻褄が合わない。 */
+  const focus = useCallback((code: string) => {
+    if (catalog?.get(code)?.kind === 0) pick(code);
+    else trace(code);
+  }, [catalog, pick, trace]);
+
   const view = useMemo(() => {
     if (!data) return null;
     if (!extra) return data;
@@ -917,9 +1073,43 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
         purposeOf: (h, d) => purposeCache.current.get(`${h}>${d}`) ?? null,
       } : null,
     });
-    setAsked(await askGemini(prompt));
-    setTimeout(() => setAsked(null), 3200);
-  }, [selected, catalog, detail, path, center]);
+
+    // キーが無ければ、選んだ提供元のチャット画面を開く。
+    // キーがあるときだけ、この画面の中に答えを流す。
+    const { provider, key, model } = currentAi(settings);
+    if (settings.aiMode !== 'inapp' || !key) {
+      setAsked(await openChat(provider, prompt));
+      setTimeout(() => setAsked(null), 3200);
+      return;
+    }
+
+    askAbort.current?.abort();
+    const ac = new AbortController();
+    askAbort.current = ac;
+    setAnswer({ text: '', busy: true });
+    try {
+      await askAi(prompt, {
+        provider, key, model, signal: ac.signal,
+        onText: (chunk) => setAnswer((a) => ({ text: (a?.text ?? '') + chunk, busy: true })),
+      });
+      setAnswer((a) => ({ text: a?.text ?? '', busy: false }));
+    } catch (e) {
+      if (ac.signal.aborted) return; // 別の質問に切り替わっただけ
+      setAnswer({ text: '', busy: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  }, [selected, catalog, detail, path, center, settings]);
+
+  /** 生成を止める、または読み終えた答えを畳む */
+  const closeAnswer = useCallback(() => {
+    askAbort.current?.abort();
+    setAnswer(null);
+  }, []);
+
+  // 選ぶ会社が変われば、前の会社への答えは用済み
+  useEffect(() => {
+    askAbort.current?.abort();
+    setAnswer(null);
+  }, [selected]);
 
   const purposeOf = useCallback(
     (holder: string, held: string) => purposeCache.current.get(`${holder}>${held}`) ?? null,
@@ -954,7 +1144,8 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
     </div>;
   }
   if (!center) {
-    return <Launch catalog={catalog} onPick={pick} onOpenBrowser={onOpenBrowser} />;
+    return <Launch catalog={catalog} onPick={pick} onOpenBrowser={onOpenBrowser}
+      onOpenSettings={onOpenSettings} />;
   }
 
   const palette = dark
@@ -1089,7 +1280,7 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
               // ズームインしたときに画面上で数倍に膨れて全部重なる。
               const showLabel = isCenter || isSel || isHov || scale > 1.7;
               if (!showLabel) return;
-              const fs = 11 / scale;
+              const fs = (11 * settings.fontScale) / scale;
               ctx.font = `${isCenter ? 600 : 500} ${fs}px -apple-system, "Hiragino Sans", sans-serif`;
               ctx.textAlign = 'center'; ctx.textBaseline = 'top';
               const label = n.name.length > 14 ? `${n.name.slice(0, 13)}…` : n.name;
@@ -1129,12 +1320,20 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
             {busy && <Loader2 size={13} className="ter" style={{ animation: 'spin 1s linear infinite' }} />}
 
             {compact ? (
-              <Tip tip="表示の設定" pos="top" style={{ marginLeft: 'auto' }}>
-                <button className="ap-btn" onClick={() => setShowControls((v) => !v)}
-                  style={showControls ? { background: 'var(--blue)', color: '#fff' } : undefined}>
-                  <SlidersHorizontal size={13} />
-                </button>
-              </Tip>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Tip tip="グラフの見せ方" pos="top">
+                  <button className="ap-btn" onClick={() => setShowControls((v) => !v)}
+                    style={showControls ? { background: 'var(--blue)', color: '#fff' } : undefined}>
+                    <SlidersHorizontal size={13} />
+                  </button>
+                </Tip>
+                <Tip tip="設定" pos="top">
+                  <button className="ap-iconbtn ap-iconbtn-lg" aria-label="設定"
+                    onClick={onOpenSettings}>
+                    <SettingsIcon size={19} />
+                  </button>
+                </Tip>
+              </div>
             ) : (
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
                 <Controls {...{ depth, setDepth, hold, setHold, major, setMajor, trade, setTrade, colorBy, setColorBy, perNode, setPerNode }} />
@@ -1144,6 +1343,12 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && results[0]) trace(results[0][0]); }} />
                 </div>
+                <Tip tip="設定" pos="top">
+                  <button className="ap-iconbtn ap-iconbtn-lg" aria-label="設定"
+                    onClick={onOpenSettings}>
+                    <SettingsIcon size={19} />
+                  </button>
+                </Tip>
               </div>
             )}
           </div>
@@ -1270,10 +1475,11 @@ export default function GraphExplorer({ onOpenBrowser }: { onOpenBrowser: () => 
 
         {selected && (
           <Inspector code={selected} catalog={catalog} detail={detail}
-            onClose={() => setSelected(null)} onCenter={pick}
+            onClose={() => setSelected(null)} onCenter={focus}
             wide={wideInspector} onToggleWide={() => setWideInspector((v) => !v)}
             width={inspectorW} path={path} center={center} purposeOf={purposeOf}
-            onAsk={ask} asked={asked} />
+            onAsk={ask} asked={asked} aiLabel={PROVIDERS[settings.provider].label}
+            answer={answer} onCloseAnswer={closeAnswer} />
         )}
       </div>
     </div>

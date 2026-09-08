@@ -263,19 +263,43 @@ def main():
     customers = (con.execute("SELECT * FROM customers").df()
                  if _has(con, "customers") else pd.DataFrame())
     events = con.execute("SELECT * FROM events").df() if _has(con, "events") else pd.DataFrame()
+    # 有報の経営指標等。J-Quants を載せられない公開版でも、これは EDINET 由来なので出せる
+    annual = (con.execute("SELECT * FROM edinet_financials ORDER BY sec_code, n").df()
+              if _has(con, "edinet_financials") else pd.DataFrame())
     con.close()
 
     if not len(fins):
         print("ℹ️  決算・サプライズを含まない公開版として書き出します")
     print(f"📦 企業 {len(companies):,} / 決算 {len(fins):,} / サプライズ {len(surprises):,}"
-          f" / 政策保有 {len(holdings):,} / 大株主 {len(shareholders):,}"
-          f" / ニュース {len(news):,}")
+          f" / 有報の業績 {len(annual):,} / 政策保有 {len(holdings):,}"
+          f" / 大株主 {len(shareholders):,} / ニュース {len(news):,}")
 
     # ---- 決算: 企業ごとに新しい順へ
     fins_by_code = {}
     if len(fins):
         fins = fins.sort_values("disc_date", ascending=False)
         fins_by_code = {c: g for c, g in fins.groupby("sec_code")}
+
+    # ---- 有報の業績: 企業ごとに新しい期から順に
+    #
+    # 売上・利益の名前は会計基準で変わる。日本基準は経常利益、IFRS は税引前利益なので、
+    # 画面で見出しを変えられるよう会計基準そのものを持たせる。
+    ANNUAL_COLS = ("label", "rel", "sales", "op", "pretax", "np", "assets", "equity",
+                   "equity_ratio", "eps", "bps", "roe", "per", "dividend", "ocf",
+                   "employees")
+    annual_by_code, annual_meta = {}, {}
+    if len(annual):
+        for code, g in annual.groupby("sec_code"):
+            rows = []
+            for r in g.itertuples():
+                rows.append({c: (getattr(r, c) if c in ("label", "rel") else num(getattr(r, c)))
+                             for c in ANNUAL_COLS})
+            annual_by_code[code] = rows
+            first = g.iloc[0]
+            annual_meta[code] = {
+                "standard": first["standard"], "basis": first["basis"],
+                "submitted": first["submitted"],
+            }
 
     # feat_op_surprise = (累計営業利益 − 通期会社予想) / |通期会社予想| なので、
     # 1Q なら約 -0.75、2Q なら約 -0.5 と、四半期によって水準が決まってしまう。
@@ -448,6 +472,15 @@ def main():
             if period != "FY":
                 op_progress = ratio(op, f_op)
 
+        # 決算 (J-Quants) が無い公開版では、有報の当期の値をそのまま業績として出す。
+        # 四半期の粒度は落ちるが、空欄のままにするよりは事実が伝わる。
+        years = annual_by_code.get(code, [])
+        cur = years[0] if years else None
+        if sales is None and cur:
+            sales, op, np_ = cur["sales"], cur["op"], cur["np"]
+            eps, bps, eqar = cur["eps"], cur["bps"], cur["equity_ratio"]
+            period = cur["label"]
+
         sg = surp_by_code.get(code)
         progress = pctile = excess = None
         if sg is not None and len(sg):
@@ -508,6 +541,10 @@ def main():
             "doc_id": doc_by_code.get(code, (None, None))[0],
             "doc_submitted": doc_by_code.get(code, (None, None))[1],
             "eps": eps, "bps": bps, "equity_ratio": eqar,
+            "results": years,
+            "standard": annual_meta.get(code, {}).get("standard"),
+            "basis": annual_meta.get(code, {}).get("basis"),
+            "results_submitted": annual_meta.get(code, {}).get("submitted"),
             "financials": history,
             "surprises": surprise_hist,
             "holdings": sorted(held, key=lambda x: -(x["value"] or 0))[:40],
@@ -554,6 +591,7 @@ def main():
             "holding_count": int(len(holdings)),
             "holding_companies": int(holdings.src_sec.nunique()) if len(holdings) else 0,
             "customer_count": int(len(customers)),
+            "annual_companies": len(annual_by_code),
         },
         # 公共データ利用規約(PDL1.0)は出典の明記と、加工した旨の表示を求めている
         "sources": [
@@ -561,7 +599,8 @@ def main():
              "url": "https://disclosure2.edinet-fsa.go.jp/",
              "license": "公共データ利用規約（PDL1.0）",
              "license_url": "https://disclosure2dl.edinet-fsa.go.jp/guide/static/submit/WZEK0030.html",
-             "note": "有価証券報告書の政策保有株・大株主・主要な顧客・株式事務の記載をもとに作成"},
+             "note": "有価証券報告書の政策保有株・大株主・主要な顧客・株式事務・"
+                     "経営指標等の推移の記載をもとに作成"},
         ],
         "sectors": sectors,
         # 全ノードの軽量な目録。検索とグラフのラベル/ファビコンをこれ1本で賄う。

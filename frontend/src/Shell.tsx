@@ -2,6 +2,7 @@ import { useState, lazy, Suspense } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import CompanyBrowser from './browser/CompanyBrowser';
 import GraphExplorer from './browser/GraphExplorer';
+import Settings from './browser/Settings';
 
 /* 検証ダッシュボードは初回表示では読み込まない。
    企業ブラウザだけを見る人に、Recharts ごと配る必要はない。 */
@@ -12,8 +13,18 @@ const Dashboard = lazy(() => import('./App'));
    規約上そのデータを公開サイトに載せられないため、配信データ自体が存在しない。 */
 const PUBLIC_BUILD = import.meta.env.VITE_PUBLIC === '1';
 
+type View = 'graph' | 'browser' | 'dashboard' | 'settings';
+
 export default function Shell() {
-  const [view, setView] = useState<'graph' | 'browser' | 'dashboard'>('graph');
+  const [view, setView] = useState<View>('graph');
+  /* 設定から戻る先は、開く前にいた画面。グラフの中心や検索の途中を捨てずに済む */
+  const [back, setBack] = useState<View>('graph');
+
+  const openSettings = (from: View) => { setBack(from); setView('settings'); };
+
+  if (view === 'settings') {
+    return <Settings onBack={() => setView(back)} />;
+  }
 
   if (view === 'dashboard') {
     return (
@@ -42,8 +53,11 @@ export default function Shell() {
   if (view === 'browser') {
     return <CompanyBrowser
       onOpenDashboard={PUBLIC_BUILD ? undefined : () => setView('dashboard')}
-      onBackToGraph={() => setView('graph')} />;
+      onBackToGraph={() => setView('graph')}
+      onOpenSettings={() => openSettings('browser')} />;
   }
 
-  return <GraphExplorer onOpenBrowser={() => setView('browser')} />;
+  return <GraphExplorer
+    onOpenBrowser={() => setView('browser')}
+    onOpenSettings={() => openSettings('graph')} />;
 }

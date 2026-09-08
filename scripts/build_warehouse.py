@@ -41,6 +41,24 @@ def read_jsonl(path: Path) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
+def load_edinet_financials() -> pd.DataFrame:
+    """有報の「主要な経営指標等の推移」を1年1行に開く。
+
+    J-Quants の決算は公開版に載せられないが、こちらは EDINET 由来なので載せられる。
+    年1回・5期ぶんと粒度は粗い代わりに、全上場企業ぶんが揃う。
+    """
+    df = read_jsonl(RAW / "financials.jsonl")
+    if not len(df):
+        return df
+    rows = []
+    for r in df.itertuples():
+        for i, y in enumerate(r.years):
+            rows.append({"sec_code": r.sec_code, "doc_id": r.doc_id,
+                         "standard": r.standard, "basis": r.basis,
+                         "submitted": r.submitted, "n": i, **y})
+    return pd.DataFrame(rows)
+
+
 def load_companies_public() -> pd.DataFrame:
     """EDINETコードリストだけで企業マスタを組む。
 
@@ -182,6 +200,9 @@ def main():
         keep = [c for c in keep if c in clean.columns]
         register("surprise_events", clean[keep].rename(
             columns={"DiscDate": "disc_date", "Code": "sec_code", "CoName": "name"}))
+
+    print("▸ 有報の業績（EDINET の XBRL より・5期ぶん）")
+    register("edinet_financials", load_edinet_financials())
 
     print("▸ EDINET 取り込み")
     register("holdings", read_jsonl(RAW / "holdings.jsonl"))

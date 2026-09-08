@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   Search, X, ChevronRight, ArrowLeft, Building2, Layers, BarChart3,
   ExternalLink, Landmark, FileText, TrendingUp, Activity, Boxes,
+  Settings as SettingsIcon,
 } from 'lucide-react';
 import './apple.css';
 import type {
   BrowserIndex, Detail, SectorFile, Summary,
 } from './types';
 import { fetchJSON, loadIndex } from './cache';
+import { openSearch } from './search';
 
 const BASE = `${import.meta.env.BASE_URL}data/browser`;
 
@@ -37,6 +39,8 @@ const signedPct = (v: number | null | undefined, d = 1) =>
   v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(d)}%`;
 const toneOf = (v: number | null | undefined) =>
   v == null ? '' : v > 0 ? 'pos' : v < 0 ? 'neg' : '';
+/* 利益は黒字が普通なので、緑で塗ると全部が緑になる。赤字のときだけ色を付ける */
+const neg = (v: number | null | undefined) => (v != null && v < 0 ? 'neg' : '');
 
 /* ---------- 小さな部品 ---------- */
 function Segmented<T extends string>({ value, options, onChange }: {
@@ -63,6 +67,16 @@ function Segmented<T extends string>({ value, options, onChange }: {
   );
 }
 
+/** 社名で外部検索を開く。有報を出していない相手はこちらに情報が無い。 */
+function SearchBtn({ name }: { name: string }) {
+  return (
+    <button className="ap-iconbtn" title="この社名で検索" aria-label="この社名で検索"
+      onClick={(e) => { e.stopPropagation(); openSearch(name); }}>
+      <Search size={12} />
+    </button>
+  );
+}
+
 function Stat({ label, value, sub, tone }: {
   label: string; value: string; sub?: string; tone?: string;
 }) {
@@ -82,14 +96,18 @@ function Overview({ index, onPick }: { index: BrowserIndex; onPick: (s17: string
     <div className="ap-in">
       <h1 className="ap-large-title">企業ブラウザ</h1>
       <p className="ap-footnote" style={{ marginTop: 4, marginBottom: 20 }}>
-        東証上場 {m.company_count.toLocaleString()} 社。J-Quants の決算と EDINET の保有関係を
+        東証上場 {m.company_count.toLocaleString()} 社。有価証券報告書の業績と保有関係を
         ローカルに取り込んで配信しています（{m.generated_at} 時点）。
       </p>
 
       <div className="ap-stats" style={{ marginBottom: 26 }}>
         <Stat label="上場企業" value={m.company_count.toLocaleString()} sub="ETF・投信を除く" />
-        <Stat label="決算開示" value={m.filing_count.toLocaleString()} sub="J-Quants 財務サマリ" />
-        <Stat label="検証イベント" value={m.surprise_count.toLocaleString()} sub="サプライズ測定済み" />
+        <Stat label="業績" value={(m.annual_companies ?? 0).toLocaleString()}
+          sub="有報の経営指標等・5期ぶん" />
+        {m.filing_count > 0
+          ? <Stat label="決算開示" value={m.filing_count.toLocaleString()} sub="J-Quants 財務サマリ" />
+          : <Stat label="主要な顧客" value={(m.customer_count ?? 0).toLocaleString()}
+              sub="売上10%以上の取引先" />}
         <Stat
           label="政策保有エッジ"
           value={m.holding_count.toLocaleString()}
@@ -266,9 +284,10 @@ function CompanyDetail({ d, onPick }: { d: Detail; onPick: (code: string) => voi
             {d.formal_name || d.name_en || ''}
           </div>
         </div>
-        <span className="ap-num ter" style={{ fontSize: 13, marginLeft: 'auto', paddingTop: 6 }}>
-          {d.code}
-        </span>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, paddingTop: 6 }}>
+          <SearchBtn name={d.name} />
+          <span className="ap-num ter" style={{ fontSize: 13 }}>{d.code}</span>
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
@@ -285,14 +304,60 @@ function CompanyDetail({ d, onPick }: { d: Detail; onPick: (code: string) => voi
         <Stat label="営業利益" value={oku(d.op)} sub={`利益率 ${pct(d.op_margin)}`} />
         <Stat label="純利益" value={oku(d.np)} />
         <Stat label="自己資本比率" value={pct(d.equity_ratio, 1)} />
-        <Stat
-          label="通期進捗（会社予想比）"
-          value={pct(d.progress, 0)}
-          tone={d.pctile == null ? '' : d.pctile > 0.5 ? 'pos' : 'neg'}
-          sub={d.pctile == null ? '検証データなし'
-            : `${d.surprises[0]?.date ?? ''} 開示 · 同日内で上位 ${(100 - d.pctile * 100).toFixed(0)}%`}
-        />
+        {d.pctile != null ? (
+          <Stat
+            label="通期進捗（会社予想比）"
+            value={pct(d.progress, 0)}
+            tone={d.pctile > 0.5 ? 'pos' : 'neg'}
+            sub={`${d.surprises[0]?.date ?? ''} 開示 · 同日内で上位 ${(100 - d.pctile * 100).toFixed(0)}%`}
+          />
+        ) : (
+          <Stat
+            label="従業員数"
+            value={d.results?.[0]?.employees != null
+              ? d.results[0].employees!.toLocaleString() : '—'}
+            sub={d.results?.[0] ? `${d.results[0].label}期 · ${d.basis ?? ''}` : undefined}
+          />
+        )}
       </div>
+
+      {d.results?.length > 0 && (
+        <Card icon={<BarChart3 size={13} />} title="業績の推移"
+          note={`有報「主要な経営指標等の推移」${d.basis ? ` · ${d.basis}` : ''}`
+            + `${d.standard ? ` · ${d.standard}` : ''}`}>
+          <table className="ap-table">
+            <thead>
+              <tr>
+                <th>期</th><th>売上高</th><th>営業利益</th>
+                <th>{d.standard && d.standard !== 'Japan GAAP' ? '税引前利益' : '経常利益'}</th>
+                <th>純利益</th><th>自己資本比率</th><th>ROE</th>
+                <th>1株利益</th><th>従業員</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.results.map((r) => (
+                <tr key={r.label + r.rel}>
+                  <td className="ap-num">{r.label}</td>
+                  <td className="ap-num">{oku(r.sales)}</td>
+                  <td className={`ap-num ${neg(r.op)}`}>{oku(r.op)}</td>
+                  <td className={`ap-num ${neg(r.pretax)}`}>{oku(r.pretax)}</td>
+                  <td className={`ap-num ${neg(r.np)}`}>{oku(r.np)}</td>
+                  <td className="ap-num">{pct(r.equity_ratio)}</td>
+                  <td className={`ap-num ${neg(r.roe)}`}>{pct(r.roe)}</td>
+                  <td className="ap-num">{r.eps != null ? r.eps.toFixed(2) : '—'}</td>
+                  <td className="ap-num sec">
+                    {r.employees != null ? r.employees.toLocaleString() : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="ap-footnote" style={{ padding: '9px 16px', lineHeight: 1.6 }}>
+            年1回の開示なので四半期の動きは映りません。営業利益は推移表に載らず
+            損益計算書から取るため、直近2期ぶんだけです。
+          </div>
+        </Card>
+      )}
 
       {d.financials.length > 0 && (
         <Card icon={<BarChart3 size={13} />} title="決算の推移" note={`${d.financials.length} 期`}>
@@ -363,6 +428,7 @@ function CompanyDetail({ d, onPick }: { d: Detail; onPick: (code: string) => voi
                 {h.shares != null ? `${h.shares.toLocaleString()} 株` : ''}
               </span>
               <span className="ap-num" style={{ width: 76, textAlign: 'right' }}>{oku(h.value)}</span>
+              <SearchBtn name={h.name || h.raw} />
               {h.code && <ChevronRight size={13} className="ter" />}
             </div>
           ))}
@@ -379,7 +445,32 @@ function CompanyDetail({ d, onPick }: { d: Detail; onPick: (code: string) => voi
               <span className="ap-num" style={{ marginLeft: 'auto', width: 76, textAlign: 'right' }}>
                 {oku(h.value)}
               </span>
+              <SearchBtn name={h.name} />
               <ChevronRight size={13} className="ter" />
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {d.trade?.length > 0 && (
+        <Card icon={<Boxes size={13} />} title="取引関係"
+          note="有報「主要な顧客ごとの情報」と、政策保有の保有目的より">
+          {d.trade.map((t, i) => (
+            <div key={i} className="ap-row" data-tap={!!t.code}
+              onClick={() => t.code && onPick(t.code)}>
+              <span className={`ap-badge ${t.direction === '仕入先' ? 'ap-badge-blue'
+                : t.direction === '販売先' ? 'ap-badge-red' : 'ap-badge-green'}`}>
+                {t.direction}
+              </span>
+              <span className="ap-body" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {t.name}
+              </span>
+              {t.segment && <span className="ap-footnote">{t.segment}</span>}
+              <span className="ap-num sec" style={{ marginLeft: 'auto', fontSize: 11 }}>
+                {t.amount != null ? oku(t.amount) : ''}
+              </span>
+              <SearchBtn name={t.name ?? ''} />
+              {t.code && <ChevronRight size={13} className="ter" />}
             </div>
           ))}
         </Card>
@@ -393,12 +484,11 @@ function CompanyDetail({ d, onPick }: { d: Detail; onPick: (code: string) => voi
               onClick={() => s.code && onPick(s.code)}>
               <span className="ap-num ter" style={{ fontSize: 11, width: 22 }}>{s.rank ?? '—'}</span>
               <span className="ap-body">{s.name}</span>
-              {s.code && (
-                <>
-                  <span className="ap-badge ap-badge-blue" style={{ marginLeft: 'auto' }}>上場</span>
-                  <ChevronRight size={13} className="ter" />
-                </>
-              )}
+              <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+                {s.code && <span className="ap-badge ap-badge-blue">上場</span>}
+                <SearchBtn name={s.name} />
+                {s.code && <ChevronRight size={13} className="ter" />}
+              </span>
             </div>
           ))}
         </Card>
@@ -442,9 +532,10 @@ function Card({ icon, title, note, children }: {
 }
 
 /* ---------- 本体 ---------- */
-export default function CompanyBrowser({ onOpenDashboard, onBackToGraph }: {
+export default function CompanyBrowser({ onOpenDashboard, onBackToGraph, onOpenSettings }: {
   onOpenDashboard?: () => void;
   onBackToGraph?: () => void;
+  onOpenSettings: () => void;
 }) {
   const [index, setIndex] = useState<BrowserIndex | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -563,6 +654,11 @@ export default function CompanyBrowser({ onOpenDashboard, onBackToGraph }: {
               </div>
             </>
           )}
+
+          <div className="ap-sidebar-label">この端末</div>
+          <div className="ap-srow" onClick={onOpenSettings}>
+            <SettingsIcon size={13} /> 設定
+          </div>
         </div>
       </aside>
 
@@ -629,6 +725,10 @@ export default function CompanyBrowser({ onOpenDashboard, onBackToGraph }: {
               />
               {query && <X size={13} className="ter" onClick={() => setQuery('')} style={{ cursor: 'default' }} />}
             </div>
+            <button className="ap-iconbtn ap-iconbtn-lg" title="設定" aria-label="設定"
+              onClick={onOpenSettings}>
+              <SettingsIcon size={19} />
+            </button>
           </div>
         </div>
 
