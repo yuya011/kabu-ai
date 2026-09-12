@@ -104,6 +104,9 @@ export interface Disclosure {
   url: string;
 }
 
+/* 当日の開示（速報）は配信 JSON に含まれない。1日1回の作り直しには間に合わないので、
+   Worker から別に引いている。型と取得は browser/live.ts にある。 */
+
 export interface NewsItem {
   title: string;
   link: string;

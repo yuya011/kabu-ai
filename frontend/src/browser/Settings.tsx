@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 import {
   ArrowLeft, Search as SearchIcon, Sparkles, Database, Check, Loader2,
   Trash2, ExternalLink, Info, Contrast, Eye, ShieldCheck, AlertTriangle,
+  BellRing, X,
 } from 'lucide-react';
 import './apple.css';
-import { clearCache } from './cache';
+import { clearCache, loadIndex } from './cache';
+import * as push from './push';
+import type { BrowserIndex } from './types';
 import { verifyKey, PROVIDERS, PROVIDER_ORDER, type Provider } from './ai';
 import {
   useSettings, updateSettings, resetSettings, getApiKey, setApiKey, maskKey,
@@ -68,6 +71,94 @@ function Choice<T extends string | number>({ value, options, onChange }: {
           onClick={() => onChange(o.value)}>{o.label}</button>
       ))}
     </div>
+  );
+}
+
+/* ---------------- 通知 ----------------
+
+   端末が対応していて、かつサーバ側に鍵が入っているときだけ出す。
+   できないことを画面に出しても、押せるものが増えるわけではない。 */
+
+function NotifySection() {
+  const codes = push.useWatch();
+  const [state, setState] = useState<push.PushState>('unsupported');
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { push.state().then(setState); }, []);
+
+  // 銘柄コードだけ並べても読めない。索引は端末に入っているので引くのは安い
+  useEffect(() => {
+    if (!codes.length) return;
+    loadIndex<BrowserIndex>(`${import.meta.env.BASE_URL}data/browser/index.json`)
+      .then((ix) => setNames(Object.fromEntries(ix.nodes.map(([c, n]) => [c, n]))))
+      .catch(() => { /* 名前が出ないだけ。コードは出る */ });
+  }, [codes.length]);
+
+  // サーバ側に鍵が無い構成では、欄ごと出さない
+  if (state === 'unavailable') return null;
+
+  const toggle = async (on: boolean) => {
+    setBusy(true);
+    if (on) setState(await push.enable());
+    else { await push.disable(); setState('off'); }
+    setBusy(false);
+  };
+
+  return (
+    <Section icon={<BellRing size={13} />} title="通知">
+      {state === 'unsupported' ? (
+        <div className="ap-row" style={{ display: 'block', lineHeight: 1.75 }}>
+          <div className="ap-footnote">
+            この端末では通知を使えません。iPhone・iPad では、Safari の共有メニューから
+            <b>ホーム画面に追加</b>して、そこから開いたときだけ通知を受け取れます（iOS 16.4 以降）。
+          </div>
+        </div>
+      ) : (
+        <>
+          <Field label="重要な開示を通知する"
+            hint="下に並べた銘柄に臨時報告書・大量保有報告書・公開買付の届出が出たときだけ鳴らします。有価証券報告書や四半期報告書は日程の決まった定期開示なので対象にしていません。決算短信は TDnet 側にしかなく、いまは取得していません。">
+            <Switch on={state === 'on'} onChange={(v) => !busy && toggle(v)} />
+          </Field>
+
+          {state === 'denied' && (
+            <div className="ap-row" style={{ display: 'block' }}>
+              <div className="ap-footnote">
+                <AlertTriangle size={11} style={{ verticalAlign: -1, marginRight: 4, color: 'var(--orange)' }} />
+                ブラウザ側で通知が拒否されています。サイトの設定から許可し直してください。
+              </div>
+            </div>
+          )}
+
+          <Field label="通知する銘柄"
+            hint={codes.length
+              ? '銘柄の画面のベルからも出し入れできます。'
+              : 'まだありません。銘柄の画面の右上にあるベルから追加します。'}>
+            <span className="ap-num sec">{codes.length} 社</span>
+          </Field>
+
+          {codes.map((c) => (
+            <div key={c} className="ap-row">
+              <span className="ap-num ter" style={{ fontSize: 11, width: 40 }}>{c}</span>
+              <span className="ap-body">{names[c] ?? '—'}</span>
+              <button className="ap-iconbtn" title="外す" aria-label="外す"
+                style={{ marginLeft: 'auto' }}
+                onClick={() => push.toggleWatch(c)}>
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+
+          <div className="ap-row" style={{ display: 'block', lineHeight: 1.75 }}>
+            <div className="ap-footnote">
+              預けるのは「この購読で、この銘柄を鳴らす」という組だけです。
+              購読の宛先はブラウザの配信元が発行する URL で、こちらから利用者を特定する
+              材料にはなりません。通知を切れば、その控えも消します。
+            </div>
+          </div>
+        </>
+      )}
+    </Section>
   );
 }
 
@@ -269,6 +360,8 @@ export default function Settings({ onBack }: { onBack: () => void }) {
                   onChange={(analytics) => updateSettings({ analytics })} />
               </Field>
             </Section>
+
+            <NotifySection />
 
             <Section icon={<Database size={13} />} title="この端末のデータ">
               <Field label="保存した配信データを消す"

@@ -88,3 +88,46 @@ self.addEventListener('fetch', (e) => {
     }
   })());
 });
+
+/* ---------------- 通知 ----------------
+ *
+ * Worker が監視銘柄の重要な開示（臨時報告書・大量保有・公開買付）を見つけたときに
+ * 届く。本文は暗号化されて来るので、中身を読めるのはこの端末だけである。
+ *
+ * userVisibleOnly で購読しているため、受け取ったら必ず1つ出さなければならない。
+ * 本文が壊れていても、黙って捨てずに最低限の通知は出す。
+ */
+self.addEventListener('push', (e) => {
+  let d = {};
+  try {
+    d = e.data ? e.data.json() : {};
+  } catch {
+    d = { title: '適時開示', body: e.data ? e.data.text() : '' };
+  }
+  const icon = new URL('icons/icon-192.png', self.registration.scope).href;
+  e.waitUntil(self.registration.showNotification(d.title || '適時開示', {
+    body: d.body || '',
+    icon,
+    badge: icon,
+    lang: 'ja',
+    // 同じ銘柄の通知が積み上がらないようまとめる
+    tag: d.code ? `kabu-${d.code}` : undefined,
+    data: { url: d.url || null, code: d.code || null },
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = e.notification.data && e.notification.data.url;
+  e.waitUntil((async () => {
+    // 既に開いているタブがあればそれを前に出す。無ければ開示そのものを開く
+    const open = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const mine = open.find((c) => c.url.startsWith(self.registration.scope));
+    if (mine) {
+      await mine.focus();
+      if (url) await self.clients.openWindow(url);
+      return;
+    }
+    await self.clients.openWindow(url || self.registration.scope);
+  })());
+});

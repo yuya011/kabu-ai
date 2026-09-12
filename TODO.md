@@ -23,7 +23,38 @@ push を契機に GitHub Actions がサイトを作り直す。台帳で取得�
 0 5 1 1,4,7,10 * cd /path/to/kabu-ai && bash scripts/update_edinet_local.sh >> data/edinet_raw/quarterly.log 2>&1
 ```
 
-### 1-2. 独自ドメインの取得（広告の前提）
+### 1-2. 速報と通知の有効化（各1回）
+
+当日の開示の巡回と Web Push を足した。**鍵を入れるまでは動かない**（入れなければ、
+速報の枠も通知の欄も画面に出ないだけで、他はいままでどおり）。
+
+```bash
+cd worker
+npx wrangler d1 execute kabu-stats --file schema.sql --remote   # 表を足す。既存行は触らない
+npx wrangler secret put EDINET_KEY        # .env の EDINET_API と同じ値
+npx wrangler secret put COLLECT_TOKEN     # 手で巡回を蹴るための合言葉（任意）
+
+node vapid-keygen.mjs                     # 通知を使うなら
+#   出力の public を wrangler.toml の [vars] VAPID_PUBLIC に貼る
+npx wrangler secret put VAPID_PRIVATE
+
+npx wrangler deploy
+```
+
+展開したら、通っているかを見る。
+
+```bash
+curl -X POST -H "Authorization: Bearer <COLLECT_TOKEN>" \
+  https://kabu-stats.yuya011.workers.dev/collect
+curl https://kabu-stats.yuya011.workers.dev/sources
+```
+
+> **EDINET が Cloudflare のエッジを弾く可能性がある。**
+> EDINET は GitHub Actions のランナー（Azure の IP）を 403 で拒否する。Workers も
+> 同じ扱いなら `last_status` に `edinet: err:403` が残る。そのときは巡回だけを
+> 手元の cron から `POST /collect` に投げる形に寄せれば動く（Workers は受け口と配信に徹する）。
+
+### 1-3. 独自ドメインの取得（広告の前提）
 
 **AdSense は自分で取得したドメインでないと審査を受けられない。**
 `github.io` は GitHub が持つ共有ドメインなので、いまのままでは申請できない。
@@ -76,13 +107,19 @@ ChatGPT はキーを拒むときだけ CORS ヘッダを返さないので、疎
 `GET /trending` は実装済み（`worker/index.js`）。フロント側は `fetchTrending()` も用意済み。
 トップの検索ボックスの下に数行で出せる。統計が貯まり始めた今、入口としても効く。
 
-### 3-2. 臨時報告書の通知 — 中
+概観の一等地は「本日の開示」が取ったので、その下か、検索ボックスの直下に置くことになる。
+なお `scripts/news_ingest.py` は既に `/trending` を読んでいて、閲覧の多い会社を
+毎日のニュース収集（Tier 1）に入れている。
 
-出来事のデータは 8,694件が揃っている（主要株主の異動 548件、親会社・特定子会社の異動 687件など）。
-「保有銘柄に主要株主の異動がありました」を報道より前に出せる。
+### 3-2. 臨時報告書の通知 — ✅ 済
 
-iOS 16.4 以降ならホーム画面に追加した PWA のままプッシュできる。
-統計と同じ Worker に乗るので、追加は配信部分と購読の管理だけ。
+Worker が平日10分おきに EDINET の当日提出を巡回し、監視銘柄に臨時報告書・
+大量保有報告書・公開買付の届出が出たら Web Push で鳴らす。
+銘柄画面のベル、または設定→通知から。iOS 16.4 以降ならホーム画面の PWA のまま届く。
+
+残っているのは**決算短信**で、これは TDnet 側にしか出ない。
+拾うなら JPX の TDnet API サービス（有料・再配信可）を契約して
+`TDNET_API_BASE` を渡す。受け口は `worker/sources/tdnet.js` に用意してある。
 
 ### 3-3. 有報ベースの要約 — 中
 
