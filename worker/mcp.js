@@ -7,9 +7,19 @@
  *   https://kabu-stats.yuya011.workers.dev/mcp
  *
  * SDK を使わないのは、この Worker が node_modules を持たない素の ESM で、
- * バンドラを挟んでいないため。ステートレスな MCP は JSON-RPC を1往復する
- * だけなので、素で書いても短い。セッションは張らず、Mcp-Session-Id も出さない
- * （仕様上サーバーの任意）。GET によるサーバー発の通知も使わないので 405 を返す。
+ * バンドラを挟んでいないため。道具を返すだけのサーバーなら JSON-RPC を
+ * 1往復するだけで済み、素で書いても短い。
+ *
+ * 新旧2つの世代を受ける（dual-era）。2026-07-28 で仕様が大きく変わり、
+ * initialize の握手が廃止されて server/discover と毎リクエストの _meta に
+ * なった。Claude は新しいほうで来るが、他のクライアントはまだ古いほうで来る。
+ * 世代の判定は「リクエストが名乗った版」だけで行い、状態は持たない。
+ *
+ * 受けつける側は寛容にしてある。必須ヘッダが無いだけでは弾かない。
+ * 当初は版の許可リストを3つ決め打ちにしていて、現行版で来た Claude に
+ * 400 を返して繋がらなかった。厳しさが相互運用を壊した実例である。
+ * 一方でヘッダと本文の食い違いは弾く。経路上の機械がヘッダだけを見て
+ * 振り分けることがあり、実体とずれたまま通してはいけないため。
  *
  * データは画面と同じ書き出しを HTTP で読む（worker/ 側に倉庫は持たない）。
  * 1社1ファイルに割ってあるので、1回の応答で読むのは10KB前後で済む。
@@ -17,9 +27,26 @@
 
 import { CORS, json } from './util.js';
 
-/* 名乗る版。クライアントが知っている版を言ってきたらそれに合わせる */
-const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
-const LATEST = VERSIONS[0];
+/* 話せる版。2026-07-28 で仕様が大きく変わり、2つの世代が併存している。
+ *
+ *   モダン（2026-07-28 以降）… initialize が無い。版・クライアント情報が
+ *                              毎リクエストの _meta で来る。server/discover が必須。
+ *   レガシー（2025-11-25 以前）… initialize で握手してから使う。
+ *
+ * どちらでも受ける（dual-era）。道具の中身は版によらないので、
+ * 違うのは包み方だけである。 */
+const MODERN = '2026-07-28';
+const LEGACY = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+const SUPPORTED = [MODERN, ...LEGACY];
+
+/* _meta の鍵。仕様が接頭辞つきの名前を定めている */
+const K_VERSION = 'io.modelcontextprotocol/protocolVersion';
+const K_SERVER = 'io.modelcontextprotocol/serverInfo';
+
+const SERVER_INFO = { name: 'kabu-ai', title: 'kabu-ai 日本株データ', version: '0.1.0' };
+const INSTRUCTIONS = '日本株（東証上場約3,900社）のデータを返します。'
+  + '出典は EDINET の有価証券報告書で、推測は入っていません。'
+  + '証券コードが分からないときは、まず search_company で引いてください。';
 
 const SOURCE = 'EDINET（金融庁）の有価証券報告書。公共データ利用規約（PDL1.0）に基づき kabu-ai が加工';
 
@@ -416,7 +443,32 @@ async function getDisclosures(env, { code, days = 30 }, live) {
 
 /* ---------------- JSON-RPC ---------------- */
 
-const rpcError = (id, code, message) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
+/* 誤り応答。コードは仕様が割り当てているものを使う。
+   -32020 HeaderMismatch / -32022 UnsupportedProtocolVersion は
+   「モダンなサーバーである」ことの合図も兼ねていて、クライアントは
+   これを見てレガシーへの後退をやめ、対応版で言い直す。 */
+const rpcError = (id, code, message, data) => ({
+  jsonrpc: '2.0',
+  id: id ?? null,
+  error: { code, message, ...(data ? { data } : {}) },
+});
+
+const unsupportedVersion = (id, requested) =>
+  rpcError(id, -32022, 'Unsupported protocol version', { supported: SUPPORTED, requested });
+
+const headerMismatch = (id, message) => rpcError(id, -32020, `Header mismatch: ${message}`);
+
+/** ヘッダに載せられない値は =?base64?…?= で包んで来る */
+function unsentinel(v) {
+  if (typeof v !== 'string') return v;
+  const m = /^=\?base64\?(.*)\?=$/.exec(v);
+  if (!m) return v;
+  try {
+    return new TextDecoder().decode(Uint8Array.from(atob(m[1]), (c) => c.charCodeAt(0)));
+  } catch {
+    return v;
+  }
+}
 
 async function call(env, name, args, live) {
   switch (name) {
@@ -429,62 +481,92 @@ async function call(env, name, args, live) {
   }
 }
 
-async function dispatch(env, msg, live) {
-  const { id, method, params } = msg;
+/** モダンな結果に要る包み。レガシーには付けない（知らない鍵が増えるだけなので） */
+const envelope = (modern, body) => (modern
+  ? { resultType: 'complete', ...body, _meta: { [K_SERVER]: SERVER_INFO } }
+  : body);
 
-  if (method === 'initialize') {
-    const asked = params?.protocolVersion;
-    return {
-      jsonrpc: '2.0',
-      id,
-      result: {
-        protocolVersion: VERSIONS.includes(asked) ? asked : LATEST,
-        capabilities: { tools: {} },
-        serverInfo: { name: 'kabu-ai', title: 'kabu-ai 日本株データ', version: '0.1.0' },
-        instructions: '日本株（東証上場約3,900社）のデータを返します。'
-          + '出典は EDINET の有価証券報告書で、推測は入っていません。'
-          + '証券コードが分からないときは、まず search_company で引いてください。',
-      },
-    };
+/** 1件を捌いて { status, body } を返す。status は HTTP のほう */
+async function dispatch(env, msg, live, modern) {
+  const { id, method, params } = msg;
+  const ok = (result) => ({ status: 200, body: { jsonrpc: '2.0', id, result } });
+
+  /* モダンの必須 RPC。版・能力・名前をこれ1回で返す。
+     レガシーのクライアントは呼ばないが、断る理由も無いので常に答える。 */
+  if (method === 'server/discover') {
+    return ok({
+      resultType: 'complete',
+      supportedVersions: SUPPORTED,
+      capabilities: { tools: {} },
+      instructions: INSTRUCTIONS,
+      // 日次更新のデータなので、1時間は使い回してよい
+      ttlMs: 3600000,
+      cacheScope: 'public',
+      _meta: { [K_SERVER]: SERVER_INFO },
+    });
   }
 
-  if (method === 'ping') return { jsonrpc: '2.0', id, result: {} };
-  if (method === 'tools/list') return { jsonrpc: '2.0', id, result: { tools: TOOLS } };
+  /* レガシーの握手。2026-07-28 では廃止されたが、
+     まだ多くのクライアントがこちらで来る。 */
+  if (method === 'initialize') {
+    const asked = params?.protocolVersion;
+    return ok({
+      protocolVersion: LEGACY.includes(asked) ? asked : LEGACY[0],
+      capabilities: { tools: {} },
+      serverInfo: SERVER_INFO,
+      instructions: INSTRUCTIONS,
+    });
+  }
+
+  // ping はモダンで廃止された。来たら答えるだけで害は無い
+  if (method === 'ping') return ok({});
+
+  if (method === 'tools/list') {
+    return ok(envelope(modern, {
+      tools: TOOLS,
+      // モダンでは CacheableResult の必須項目。道具は日次更新でも変わらない
+      ...(modern ? { ttlMs: 3600000, cacheScope: 'public' } : {}),
+    }));
+  }
 
   if (method === 'tools/call') {
     const tool = params?.name;
     if (!TOOLS.some((t) => t.name === tool)) {
-      return rpcError(id, -32602, `そのような道具はありません: ${tool}`);
+      // 道具の名前が違うのは引数の誤りであって、メソッドが無いわけではない
+      return { status: 200, body: rpcError(id, -32602, `そのような道具はありません: ${tool}`) };
     }
     try {
       const result = await call(env, tool, params?.arguments ?? {}, live);
-      return {
-        jsonrpc: '2.0',
-        id,
-        result: { content: [{ type: 'text', text: JSON.stringify(result, null, 1) }], isError: false },
-      };
+      return ok(envelope(modern, {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 1) }],
+        isError: false,
+      }));
     } catch (e) {
       // 道具の中の失敗は、プロトコルの失敗ではなく結果として返す。
       // そうしないとモデルが読めず、言い直しもできない
-      return {
-        jsonrpc: '2.0',
-        id,
-        result: { content: [{ type: 'text', text: e.message }], isError: true },
-      };
+      return ok(envelope(modern, {
+        content: [{ type: 'text', text: e.message }],
+        isError: true,
+      }));
     }
   }
 
-  return rpcError(id, -32601, `対応していないメソッドです: ${method}`);
+  // 実装していない RPC は、モダンでは HTTP 404 で返す決まり。
+  // 本文の JSON-RPC 誤りが、旧 HTTP+SSE の 404 と見分ける手がかりになる
+  return { status: 404, body: rpcError(id, -32601, `対応していないメソッドです: ${method}`) };
 }
 
 /* ---------------- 入口 ---------------- */
 
 const MCP_CORS = {
   ...CORS,
-  'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Accept, Authorization, Mcp-Session-Id, MCP-Protocol-Version',
-  'Access-Control-Expose-Headers': 'Mcp-Session-Id, MCP-Protocol-Version',
+  'Access-Control-Allow-Methods': 'POST,OPTIONS',
+  'Access-Control-Allow-Headers':
+    'Content-Type, Accept, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Mcp-Session-Id',
+  'Access-Control-Expose-Headers': 'MCP-Protocol-Version',
 };
+
+const reply = (body, status = 200) => json(body, status, MCP_CORS);
 
 /** MCP の口。live は当日の速報を引く関数（index.js から渡す） */
 export async function handleMcp(request, env, live) {
@@ -492,34 +574,64 @@ export async function handleMcp(request, env, live) {
     return new Response(null, { status: 204, headers: MCP_CORS });
   }
 
-  // サーバー発の通知は使わないので、GET の購読は断る（仕様どおり 405）。
-  // セッションも張らないので DELETE も同じ。
+  /* GET は 2026-07-28 で無くなった（サーバー発の通知は subscriptions/listen に移った）。
+     DELETE はセッションの終了用だったが、セッションそのものが無くなった。
+     どちらも 405 を返すのが決まりである。 */
   if (request.method !== 'POST') {
     return new Response(null, { status: 405, headers: { ...MCP_CORS, Allow: 'POST, OPTIONS' } });
   }
 
-  const ver = request.headers.get('MCP-Protocol-Version');
-  if (ver && !VERSIONS.includes(ver)) {
-    return json({ error: `対応していないプロトコル版です: ${ver}` }, 400, MCP_CORS);
-  }
+  /* Origin は「present かつ不正なら 403」と定められているが、この口は
+     公開データを読むだけで、書き込む先も秘密も持たない。どの Origin から
+     読まれても失うものが無いので、弾かない（弾くとブラウザ上のクライアントが
+     使えなくなるだけである）。DNS リバインディングで得られるものも無い。 */
 
   let msg;
   try {
     msg = await request.json();
   } catch {
-    return new Response(JSON.stringify(rpcError(null, -32700, 'JSON として読めません')),
-      { status: 400, headers: { 'Content-Type': 'application/json', ...MCP_CORS } });
+    return reply(rpcError(null, -32700, 'JSON として読めません'), 400);
+  }
+  // 2026-07-28 の本文は1件のみ。旧版のまとめ送りも受けられるよう先頭を見る
+  if (Array.isArray(msg)) msg = msg[0];
+  if (!msg || typeof msg !== 'object') {
+    return reply(rpcError(null, -32600, 'JSON-RPC のメッセージではありません'), 400);
   }
 
-  /* 返事の要る問い合わせだけ捌く。id を持たないものは通知か応答で、
-     仕様では本文を返さず 202 にする。まとめて来たときは中身を見て分けるので、
-     先頭が通知でも後ろの問い合わせを落とさない。 */
-  const batch = Array.isArray(msg) ? msg : [msg];
-  const asks = batch.filter((m) => m && m.id !== undefined && m.id !== null);
-  if (!asks.length) {
+  // 通知と応答には本文を返さない
+  if (msg.id === undefined || msg.id === null) {
     return new Response(null, { status: 202, headers: MCP_CORS });
   }
 
-  const out = await Promise.all(asks.map((m) => dispatch(env, m, live)));
-  return json(Array.isArray(msg) ? out : out[0], 200, MCP_CORS);
+  /* 版の決定。モダンは毎リクエストで名乗り、ヘッダと本文の両方に同じ値が載る。
+     食い違いは誤りにする決まりで、経路上の機械がヘッダだけを見て振り分ける
+     ことがあるため、実体とずれたまま通してはいけない。 */
+  const hVer = request.headers.get('MCP-Protocol-Version');
+  const bVer = msg.params?._meta?.[K_VERSION];
+  if (hVer && bVer && hVer !== bVer) {
+    return reply(headerMismatch(msg.id,
+      `MCP-Protocol-Version '${hVer}' が本文の '${bVer}' と一致しません`), 400);
+  }
+  const version = bVer || hVer || null;
+  if (version && !SUPPORTED.includes(version)) {
+    return reply(unsupportedVersion(msg.id, version), 400);
+  }
+
+  /* ヘッダに載る写しの検証。値が違うまま通すと、経路上の機械と
+     こちらで別の真実を見ることになるので弾く。
+     一方「無い」ほうは弾かない。無いヘッダを頼りにした振り分けは起こり得ず、
+     厳しくしても相互運用を壊すだけである（それで実際に繋がらなくなった）。 */
+  const hMethod = request.headers.get('Mcp-Method');
+  if (hMethod && hMethod !== msg.method) {
+    return reply(headerMismatch(msg.id,
+      `Mcp-Method '${hMethod}' が本文の '${msg.method}' と一致しません`), 400);
+  }
+  const hName = unsentinel(request.headers.get('Mcp-Name'));
+  if (hName && msg.method === 'tools/call' && hName !== msg.params?.name) {
+    return reply(headerMismatch(msg.id,
+      `Mcp-Name '${hName}' が本文の '${msg.params?.name}' と一致しません`), 400);
+  }
+
+  const { status, body } = await dispatch(env, msg, live, version === MODERN);
+  return reply(body, status);
 }
