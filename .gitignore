@@ -3,6 +3,7 @@
 *.log
 .DS_Store
 __pycache__/
+.claude/
 
 # EDINET/データ取り込みのローカルキャッシュ（再取得可能・巨大）
 data/edinet_cache/

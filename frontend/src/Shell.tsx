@@ -19,6 +19,8 @@ export default function Shell() {
   const [view, setView] = useState<View>('graph');
   /* 設定から戻る先は、開く前にいた画面。グラフの中心や検索の途中を捨てずに済む */
   const [back, setBack] = useState<View>('graph');
+  /* トップの業種カードから来たときは、その業種を開いた状態で一覧を出す */
+  const [sector, setSector] = useState<string | undefined>(undefined);
 
   const openSettings = (from: View) => { setBack(from); setView('settings'); };
 
@@ -52,12 +54,13 @@ export default function Shell() {
 
   if (view === 'browser') {
     return <CompanyBrowser
+      initialSector={sector}
       onOpenDashboard={PUBLIC_BUILD ? undefined : () => setView('dashboard')}
       onBackToGraph={() => setView('graph')}
       onOpenSettings={() => openSettings('browser')} />;
   }
 
   return <GraphExplorer
-    onOpenBrowser={() => setView('browser')}
+    onOpenBrowser={(s) => { setSector(s); setView('browser'); }}
     onOpenSettings={() => openSettings('graph')} />;
 }

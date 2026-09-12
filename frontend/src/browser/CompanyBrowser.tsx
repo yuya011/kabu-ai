@@ -756,7 +756,9 @@ function Card({ icon, title, note, children }: {
 }
 
 /* ---------- 本体 ---------- */
-export default function CompanyBrowser({ onOpenDashboard, onBackToGraph, onOpenSettings }: {
+export default function CompanyBrowser({ initialSector, onOpenDashboard, onBackToGraph, onOpenSettings }: {
+  /** トップの業種カードから来たとき、最初に開く業種 */
+  initialSector?: string;
   onOpenDashboard?: () => void;
   onBackToGraph?: () => void;
   onOpenSettings: () => void;
@@ -801,6 +803,11 @@ export default function CompanyBrowser({ onOpenDashboard, onBackToGraph, onOpenS
     const d = shard![c];
     if (d) { setDetail(d); setCode(c); }
   }, []);
+
+  /* 指定された業種を最初に開く。概観を挟むと、押した先が出るまで一手多い */
+  useEffect(() => {
+    if (initialSector) openSector(initialSector);
+  }, [initialSector, openSector]);
 
   useEffect(() => { contentRef.current?.scrollTo({ top: 0 }); }, [s17, s33, code]);
 

@@ -31,8 +31,10 @@ MCP_DATA_BASE = "https://yuya011.github.io/kabu-ai/data/mcp"
 # 通知の公開鍵。node worker/vapid-keygen.mjs で作った public をここに入れ、
 # private は npx wrangler secret put VAPID_PRIVATE で渡す。
 # 空のままなら通知の口は 503 を返し、画面にも通知の設定が出ない。
-VAPID_PUBLIC = ""
-VAPID_SUBJECT = "mailto:noreply@example.com"
+VAPID_PUBLIC = "BE5mQ29BvlL29LJ2okJ6vYLV4uiSfHAqrNNGWeoES-ZVyUog3u5eRgOoquBhgCA7iphhm06FPxjF_O56XaCXCSc"
+# 配信元が送信者に連絡する必要が出たときの宛先。mailto: でも https: でもよい。
+# 公開リポジトリなので、個人のメールではなくリポジトリの URL を置いている。
+VAPID_SUBJECT = "https://github.com/yuya011/kabu-ai"
 
 # 秘密は wrangler secret put で渡す（ここには書かない）:
 #   EDINET_KEY     EDINET API のサブスクリプションキー

@@ -56,8 +56,23 @@ export async function today(env, ymd = jstYmd()) {
   if (!res.ok) throw new Error(`edinet ${res.status}`);
 
   const body = await res.json();
+
+  /* EDINET はエラーも HTTP 200 で返す。
+     鍵が違うときは本文が {"StatusCode":401,"message":"Access denied ..."} になり、
+     一覧 API 側の異常は metadata.status に入る。res.ok だけを見ていると
+     「鍵が違う」と「その日は提出が無い」がどちらも 0 件になって区別が付かない。
+     提出が無い日でも results は [] として必ず来るので、無ければ異常とみなす。 */
+  const status = Number(body.StatusCode ?? body.metadata?.status ?? 200);
+  if (status !== 200) {
+    const why = String(body.message ?? body.metadata?.message ?? '').slice(0, 90);
+    throw new Error(`edinet ${status} ${why}`);
+  }
+  if (!Array.isArray(body.results)) {
+    throw new Error('edinet 応答に results が無い');
+  }
+
   const items = [];
-  for (const d of body.results ?? []) {
+  for (const d of body.results) {
     // 証券コードが無いのは投資信託・ファンド。上場企業の画面には出さない
     const sec = (d.secCode || '').trim();
     if (!sec) continue;

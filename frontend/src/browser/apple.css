@@ -386,17 +386,21 @@
 .ap-launch {
   min-height: 100vh;
   display: flex; flex-direction: column; align-items: center;
-  padding: 16vh 24px 40px;
+  /* 下は固定した出典に隠れない高さを空ける */
+  padding: 7vh 32px 84px;
   background: var(--bg-grouped);
 }
-.ap-launch-inner { width: 100%; max-width: 620px; }
+/* 画面の広さは使い切る。カードは横に伸ばし、検索まわりだけ中央に絞る。
+   全部を細い1本の帯に押し込むと、広い画面で何も見えていないのと同じになる。 */
+.ap-launch-inner { width: 100%; max-width: 1180px; }
+.ap-launch-hero { width: 100%; max-width: 760px; margin: 0 auto; }
 
-/* Spotlight 風の大きな検索フィールド */
+/* Spotlight 風の大きな検索フィールド。この画面の主役なので、いちばん大きい */
 .ap-bigsearch {
-  display: flex; align-items: center; gap: 11px;
+  display: flex; align-items: center; gap: 14px;
   background: var(--bg-grouped-elevated);
   border-radius: var(--r-large);
-  padding: 15px 20px;
+  padding: 19px 24px;
   box-shadow: var(--shadow-raised);
   transition: box-shadow 0.24s var(--ease), transform 0.24s var(--ease);
 }
@@ -406,9 +410,9 @@
               0 0 0 1px var(--blue), 0 12px 40px rgba(0, 0, 0, 0.14);
 }
 .ap-bigsearch input {
-  flex: 1; border: 0; outline: 0; background: transparent;
-  font: inherit; font-size: calc(19px * var(--fs)); font-weight: 400;
-  letter-spacing: -0.014em; color: var(--label);
+  flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
+  font: inherit; font-size: calc(22px * var(--fs)); font-weight: 400;
+  letter-spacing: -0.016em; color: var(--label);
 }
 .ap-bigsearch input::placeholder { color: var(--label-tertiary); }
 
@@ -430,6 +434,142 @@
 }
 .ap-chip:hover { background: var(--fill-secondary); transform: translateY(-1px); }
 .ap-chip img { width: 14px; height: 14px; border-radius: 3px; }
+
+/* --- 検索の下に置く2枚のカード ---
+
+   行き先が2つある。業種の一覧と、対話型AIからの接続である。
+   どちらも文字だけのボタンでは何が起きるか分からないので、
+   カードの中に行き先の見本を入れる。一覧は上位の業種をそのまま表にして、
+   接続は結線の図を出す。押す前に、押した先が想像できる状態にする。
+
+   広い画面ではカードを大きく取る。ここで画面を余らせると、
+   利用者は検索窓しか無い画面を見ることになる。 */
+.ap-launch-cards {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 36px;
+  align-items: stretch;
+}
+.ap-lcard {
+  display: flex; flex-direction: column; text-align: left;
+  background: var(--bg-grouped-elevated);
+  border-radius: var(--r-large);
+  box-shadow: var(--shadow-card);
+  overflow: hidden; cursor: default; border: 0; padding: 0;
+  font: inherit; color: var(--label);
+  transition: transform 0.22s var(--ease), box-shadow 0.22s var(--ease);
+}
+.ap-lcard:hover { transform: translateY(-3px); box-shadow: var(--shadow-raised); }
+.ap-lcard:active { transform: translateY(0) scale(0.996); }
+
+.ap-lcard-head {
+  display: flex; align-items: center; gap: 13px;
+  padding: 20px 22px 16px;
+}
+.ap-lcard-ico {
+  width: 38px; height: 38px; flex: 0 0 38px; border-radius: 11px;
+  display: grid; place-items: center; color: #fff;
+}
+.ap-lcard-arrow {
+  margin-left: auto; flex: 0 0 auto; color: var(--label-tertiary);
+  transition: transform 0.22s var(--ease), color 0.22s var(--ease);
+}
+.ap-lcard:hover .ap-lcard-arrow { transform: translateX(3px); color: var(--label-secondary); }
+
+.ap-lcard-foot {
+  display: flex; align-items: center; gap: 7px;
+  margin-top: auto; padding: 13px 22px 15px;
+  border-top: 0.5px solid var(--separator);
+  color: var(--label-secondary);
+}
+.ap-lcard:hover .ap-lcard-foot { color: var(--blue); }
+
+/* 業種の見本。カードの中でも行が押せて、押した業種の一覧に直に降りる。
+   社数の棒を添えると、並びが表であることが目で分かる。 */
+.ap-mini { padding: 2px 14px 10px; display: grid; grid-template-columns: 1fr; gap: 1px; }
+.ap-mini-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 9px; border-radius: 7px;
+  transition: background 0.1s var(--ease);
+}
+.ap-mini-row:hover { background: var(--fill-quaternary); }
+.ap-mini-row:active { background: var(--fill-tertiary); }
+.ap-mini-bar { flex: 0 0 3px; width: 3px; height: 16px; border-radius: 2px; }
+.ap-mini-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 社数の比。数字だけより、多い少ないが先に目に入る */
+.ap-mini-gauge {
+  margin-left: auto; flex: 0 0 52px; height: 3px; border-radius: 2px;
+  background: var(--fill-secondary); overflow: hidden;
+}
+.ap-mini-gauge i { display: block; height: 100%; border-radius: 2px; }
+.ap-mini-n { flex: 0 0 42px; text-align: right; color: var(--label-secondary); }
+
+/* MCP の結線図。左に対話型AI、右にこのサイト。線は向きを持って流れる */
+.ap-wire { display: block; width: 100%; height: auto; padding: 6px 20px 10px; }
+.ap-wire-line {
+  fill: none; stroke: var(--blue); stroke-width: 1.6; opacity: 0.6;
+  stroke-dasharray: 4 7; stroke-linecap: round;
+  animation: ap-wire-flow 1.7s linear infinite;
+}
+@keyframes ap-wire-flow { to { stroke-dashoffset: -22; } }
+@media (prefers-reduced-motion: reduce) { .ap-wire-line { animation: none; } }
+[data-motion="reduce"] .ap-wire-line { animation: none; }
+.ap-wire-pill { fill: var(--fill-tertiary); }
+.ap-wire-text {
+  fill: var(--label-secondary); font-family: inherit;
+  font-size: 11px; font-weight: 600; letter-spacing: 0;
+}
+.ap-wire-hub {
+  fill: color-mix(in srgb, var(--blue) 13%, transparent);
+  stroke: color-mix(in srgb, var(--blue) 42%, transparent); stroke-width: 1;
+}
+.ap-wire-hub-text {
+  fill: var(--blue); font-family: inherit;
+  font-size: 13px; font-weight: 700; letter-spacing: 0;
+}
+.ap-wire-cap { fill: var(--label-tertiary); font-family: inherit; font-size: 9.5px; font-weight: 500; }
+
+/* 貼ればそのまま聞ける質問。MCP の値打ちは、1銘柄で終わらない問いに出る */
+.ap-ask {
+  margin: 2px 22px 12px; padding: 11px 14px;
+  border-radius: var(--r-card);
+  background: var(--fill-quaternary);
+  border-left: 2.5px solid color-mix(in srgb, var(--blue) 55%, transparent);
+  line-height: 1.65;
+}
+
+/* AI から呼べる道具の名前。何が引けるかは名前でおおよそ伝わる */
+.ap-toolpills { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 22px 16px; }
+.ap-toolpill {
+  font-size: calc(10.5px * var(--fs));
+  padding: 3px 9px; border-radius: var(--r-pill);
+  background: var(--fill-quaternary); color: var(--label-secondary);
+  white-space: nowrap;
+}
+
+/* 出典は最下部に固定する。どの状態でも同じ場所にあり、本文の邪魔をしない */
+.ap-launch-footer {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center;
+  gap: 4px 14px; flex-wrap: wrap;
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
+  background: var(--material-regular);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-top: 0.5px solid var(--separator);
+}
+.ap-launch-footer a { color: var(--label-secondary); text-decoration: none; }
+.ap-launch-footer a:hover { color: var(--blue); }
+/* 縮めると文字が折れてアイコンと段違いになる。ここは縮めない */
+.ap-launch-footer > * { flex: 0 0 auto; }
+.ap-launch-footer .ap-btn {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+}
+
+/* 十分に広い画面では、業種を2列に割って一覧らしくする */
+@media (min-width: 1024px) {
+  .ap-mini { grid-template-columns: 1fr 1fr; gap: 1px 10px; }
+}
 
 /* ============ グラフ ============ */
 .ap-graph-wrap { position: relative; flex: 1; overflow: hidden; background: var(--bg-secondary); }
@@ -549,9 +689,16 @@
   }
   .ap-inspector[data-wide="true"] ~ .ap-graph-actions { bottom: calc(82dvh + 18px); }
 
-  .ap-launch { padding: 8vh 18px 40px; }
-  .ap-bigsearch { padding: 13px 16px; border-radius: var(--r-card); }
-  .ap-bigsearch input { font-size: max(16px, calc(16px * var(--fs))); } /* iOS の自動ズームを避ける下限 */
+  .ap-launch { padding: 5vh 18px 86px; }
+  .ap-launch-cards { gap: 12px; margin-top: 24px; }
+  .ap-lcard-head { padding: 16px 16px 12px; }
+  .ap-mini { padding: 0 10px 8px; }
+  .ap-wire { padding: 4px 14px 8px; }
+  .ap-ask { margin-inline: 16px; }
+  .ap-toolpills { padding-inline: 16px; }
+  .ap-lcard-foot { padding: 12px 16px 13px; }
+  .ap-bigsearch { padding: 15px 18px; border-radius: var(--r-card); }
+  .ap-bigsearch input { font-size: max(17px, calc(17px * var(--fs))); } /* iOS の自動ズームを避ける下限 */
   .ap-suggest { max-height: 54dvh; }
 
   .ap-edgetip { display: none; } /* 触った位置に出しても指で隠れる */
@@ -566,6 +713,10 @@
   /* 一覧側：表は横スクロールで逃がす */
   .ap-card { overflow-x: auto; }
   .ap-table { min-width: 560px; }
+}
+
+@media (max-width: 760px) {
+  .ap-launch-cards { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 480px) {

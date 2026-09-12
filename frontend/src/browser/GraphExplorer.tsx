@@ -5,7 +5,7 @@ import {
   Globe, Network, Loader2, Building2, Newspaper, ChevronsLeft, ChevronsRight,
   SlidersHorizontal, CornerDownRight, Route, Crosshair, Sparkles, Check,
   ScrollText, Info, Megaphone, Settings as SettingsIcon, CircleStop, BarChart3,
-  Bot,
+  Bot, Layers, ChevronRight,
 } from 'lucide-react';
 import './apple.css';
 import type { Detail, ResultRow, TradeRelation, EventItem } from './types';
@@ -104,17 +104,72 @@ const REL_NAME: Record<number, string> = {
   1: '仕入先', 2: '販売先', 3: '業務提携', 4: '金融取引',
 };
 
-/* ---------------- 検索起点のトップ ---------------- */
-function Launch({ catalog, onPick, onOpenBrowser, onOpenSettings }: {
+/* ---------------- 検索起点のトップ ----------------
+
+   行き先は3つある。社名からグラフへ、業種から一覧へ、対話型AIから MCP へ。
+   主役は検索なので中央にいちばん大きく置き、残り2つは横に並ぶカードにする。
+   カードには行き先の見本を入れる。文字だけのボタンでは、押した先が
+   一覧なのか設定手順なのかが分からない。 */
+
+/** MCP カードの結線図。左の対話型AIから、右のこのサイトへ線が流れる。
+
+    絵で描くのは「つながる」ということだけで、手順はカードを開いた先にある。 */
+const MCP_CLIENTS = ['Claude', 'Cursor', 'VS Code', 'Gemini'];
+
+function McpWiring() {
+  const ys = [16, 50, 84, 118];
+  return (
+    <svg className="ap-wire" viewBox="0 0 340 134" role="img"
+      aria-label="Claude・Cursor・VS Code・Gemini から kabu-ai の MCP サーバーにつながる図">
+      {ys.map((y, i) => (
+        <path key={y} className="ap-wire-line"
+          style={{ animationDelay: `${i * 0.22}s` }}
+          d={`M96,${y} C148,${y} ${i === 1 || i === 2 ? 180 : 168},67 214,67`} />
+      ))}
+      {ys.map((y, i) => (
+        <g key={`p${y}`}>
+          <rect className="ap-wire-pill" x="2" y={y - 13} width="94" height="26" rx="13" />
+          <text className="ap-wire-text" x="49" y={y + 4} textAnchor="middle">
+            {MCP_CLIENTS[i]}
+          </text>
+        </g>
+      ))}
+      <circle className="ap-wire-hub" cx="214" cy="67" r="4" />
+      <rect className="ap-wire-hub" x="214" y="42" width="124" height="50" rx="12" />
+      <text className="ap-wire-hub-text" x="276" y="64" textAnchor="middle">kabu-ai</text>
+      <text className="ap-wire-cap" x="276" y="79" textAnchor="middle">MCP サーバー</text>
+    </svg>
+  );
+}
+
+/** チップに出す社名。法人格は落とす。押した先に正式名称が出る。 */
+const trimCo = (n: string) => n
+  .replace(/^株式会社/, '')
+  .replace(/株式会社$/, '')
+  .trim();
+
+/* 引ける道具。名前だけでも、何を聞けるかの見当はつく */
+const MCP_TOOLS = [
+  'search_company', 'get_company_profile', 'get_holding_network',
+  'get_disclosures', 'get_surprise_ranking',
+];
+
+function Launch({ catalog, index, onPick, onOpenBrowser, onOpenSettings }: {
   catalog: Map<string, NodeRec>;
+  index: LaunchIndex | null;
   onPick: (code: string) => void;
-  onOpenBrowser: () => void;
+  /** 業種を渡すと、その業種の一覧を開いた状態で始まる */
+  onOpenBrowser: (sector?: string) => void;
   onOpenSettings: () => void;
 }) {
   const [q, setQ] = useState('');
   const [mcp, setMcp] = useState(false);
+  const [about, setAbout] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  /* 業種は広い画面では2列に割れる。割れるときは倍の行数を出す */
+  const twoCol = useMedia('(min-width: 1024px)');
 
   const results = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -139,15 +194,16 @@ function Launch({ catalog, onPick, onOpenBrowser, onOpenSettings }: {
 
   const examples = ['83060', '72030', '67580', '99840', '45680', '80580'];
 
+  // 見本に出すのは社数の多い業種。index は社数の降順で来る
+  const sectors = index?.sectors ?? [];
+  const preview = sectors.slice(0, twoCol ? 16 : 6);
+  const rest = Math.max(0, sectors.length - preview.length);
+  const maxCount = sectors[0]?.count ?? 1;
+  const total = index?.meta.company_count ?? 0;
+
   return (
     <div className="ap ap-launch">
-      <div style={{ position: 'absolute', top: 14, right: 16, zIndex: 5, display: 'flex', gap: 6 }}>
-        <Tip tip="AIで使う (MCP)" pos="left">
-          <button className="ap-iconbtn ap-iconbtn-lg" aria-label="AIで使う (MCP)"
-            onClick={() => setMcp(true)}>
-            <Bot size={19} />
-          </button>
-        </Tip>
+      <div style={{ position: 'absolute', top: 16, right: 20, zIndex: 5 }}>
         <Tip tip="設定" pos="left">
           <button className="ap-iconbtn ap-iconbtn-lg" aria-label="設定" onClick={onOpenSettings}>
             <SettingsIcon size={19} />
@@ -155,42 +211,46 @@ function Launch({ catalog, onPick, onOpenBrowser, onOpenSettings }: {
         </Tip>
       </div>
       {mcp && <McpModal onClose={() => setMcp(false)} />}
+      {about && <AboutModal onClose={() => setAbout(false)} />}
+
       <div className="ap-launch-inner ap-in">
-        <div style={{ textAlign: 'center', marginBottom: 26 }}>
-          <h1 className="ap-large-title" style={{ fontSize: 32 }}>企業のつながりを見る</h1>
-          <p className="ap-footnote" style={{ marginTop: 7 }}>
-            社名を入れると、その会社を中心に資本のつながりを描きます。
-            有価証券報告書の政策保有株と大株主が出典です。
-          </p>
-        </div>
-
-        <div className="ap-bigsearch">
-          <Search size={19} className="ter" />
-          <input
-            ref={inputRef}
-            value={q}
-            placeholder="社名または証券コード"
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && results[0]) onPick(results[0][0]); }}
-          />
-          {q && <X size={17} className="ter" onClick={() => setQ('')} style={{ cursor: 'default' }} />}
-        </div>
-
-        {results.length > 0 && (
-          <div className="ap-suggest">
-            {results.map(([code, rec]) => (
-              <div key={code} className="ap-row" data-tap="true" onClick={() => onPick(code)}>
-                <Favi domain={rec.domain} name={rec.name} color={sectorColor(rec.s17)} />
-                <span className="ap-headline">{rec.name}</span>
-                <span className="ap-footnote">{rec.s33}</span>
-                <span className="ap-num ter" style={{ marginLeft: 'auto', fontSize: 11 }}>{short(code)}</span>
-              </div>
-            ))}
+        <div className="ap-launch-hero">
+          <div style={{ textAlign: 'center', marginBottom: 30 }}>
+            <h1 className="ap-large-title" style={{ fontSize: 40, lineHeight: 1.15 }}>
+              企業のつながりを見る
+            </h1>
+            <p className="ap-callout" style={{ marginTop: 12, color: 'var(--label-secondary)' }}>
+              社名を入れると、その会社を中心に資本のつながりを描きます。
+              {total > 0 && `東証上場 ${total.toLocaleString()} 社ぶんの`}有価証券報告書から作っています。
+            </p>
           </div>
-        )}
 
-        {!q && (
-          <>
+          <div className="ap-bigsearch">
+            <Search size={22} className="ter" />
+            <input
+              ref={inputRef}
+              value={q}
+              placeholder="社名または証券コード"
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && results[0]) onPick(results[0][0]); }}
+            />
+            {q && <X size={19} className="ter" onClick={() => setQ('')} style={{ cursor: 'default' }} />}
+          </div>
+
+          {results.length > 0 && (
+            <div className="ap-suggest">
+              {results.map(([code, rec]) => (
+                <div key={code} className="ap-row" data-tap="true" onClick={() => onPick(code)}>
+                  <Favi domain={rec.domain} name={rec.name} color={sectorColor(rec.s17)} />
+                  <span className="ap-headline">{rec.name}</span>
+                  <span className="ap-footnote">{rec.s33}</span>
+                  <span className="ap-num ter" style={{ marginLeft: 'auto', fontSize: 11 }}>{short(code)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!q && (
             <div className="ap-chips">
               {examples.map((c) => {
                 const rec = catalog.get(c);
@@ -198,24 +258,101 @@ function Launch({ catalog, onPick, onOpenBrowser, onOpenSettings }: {
                 return (
                   <button key={c} className="ap-chip" onClick={() => onPick(c)}>
                     <Favi domain={rec.domain} name={rec.name} color={sectorColor(rec.s17)} size={14} />
-                    {rec.name}
+                    {trimCo(rec.name)}
                   </button>
                 );
               })}
             </div>
-            <AdSlot slot="1111111111" format="horizontal" style={{ marginTop: 26 }} />
+          )}
+        </div>
 
-            <div style={{ textAlign: 'center', marginTop: 30 }}>
-              <button className="ap-btn ap-btn-plain" onClick={onOpenBrowser}>
-                <Building2 size={12} style={{ verticalAlign: -1, marginRight: 5 }} />
-                業種から一覧で探す
-              </button>
+        {!q && (
+          <>
+            <div className="ap-launch-cards">
+              {/* 業種から一覧で探す */}
+              <div className="ap-lcard" onClick={() => onOpenBrowser()}>
+                <div className="ap-lcard-head">
+                  <span className="ap-lcard-ico" style={{ background: 'var(--indigo)' }}>
+                    <Building2 size={19} />
+                  </span>
+                  <span style={{ minWidth: 0 }}>
+                    <div className="ap-title2">業種から一覧で探す</div>
+                    <div className="ap-footnote" style={{ marginTop: 2 }}>
+                      {sectors.length > 0 ? `${sectors.length} 業種` : '業種'}
+                      {total > 0 && ` · ${total.toLocaleString()} 社`}
+                      {' '}を売上・利益率つきの表で
+                    </div>
+                  </span>
+                  <ChevronRight size={17} className="ap-lcard-arrow" />
+                </div>
+
+                <div className="ap-mini">
+                  {preview.map((s) => (
+                    <div key={s.code} className="ap-mini-row"
+                      onClick={(e) => { e.stopPropagation(); onOpenBrowser(s.code); }}>
+                      <span className="ap-mini-bar" style={{ background: sectorColor(s.code) }} />
+                      <span className="ap-mini-name ap-body">{s.name}</span>
+                      <span className="ap-mini-gauge">
+                        <i style={{
+                          width: `${Math.max(6, (s.count / maxCount) * 100)}%`,
+                          background: sectorColor(s.code),
+                        }} />
+                      </span>
+                      <span className="ap-mini-n ap-num ap-footnote">{s.count}</span>
+                    </div>
+                  ))}
+                  {preview.length === 0 && (
+                    <div className="ap-mini-row ap-footnote">読み込み中…</div>
+                  )}
+                </div>
+
+                <div className="ap-lcard-foot ap-body">
+                  <Layers size={14} />
+                  {rest > 0 ? `ほか ${rest} 業種をすべて見る` : 'すべての業種を見る'}
+                </div>
+              </div>
+
+              {/* 対話型AIにつなぐ */}
+              <div className="ap-lcard" onClick={() => setMcp(true)}>
+                <div className="ap-lcard-head">
+                  <span className="ap-lcard-ico" style={{ background: 'var(--blue)' }}>
+                    <Bot size={19} />
+                  </span>
+                  <span style={{ minWidth: 0 }}>
+                    <div className="ap-title2">対話型AIにつなぐ (MCP)</div>
+                    <div className="ap-footnote" style={{ marginTop: 2 }}>
+                      URL を渡すだけ · 認証不要 · この5つの道具をAIが直に呼べます
+                    </div>
+                  </span>
+                  <ChevronRight size={17} className="ap-lcard-arrow" />
+                </div>
+
+                <McpWiring />
+
+                <div className="ap-ask ap-footnote">
+                  「キーエンスが政策保有している上場企業と、その保有目的を一覧にして。
+                  持ち合いになっている先には印を付けて」
+                </div>
+
+                <div className="ap-toolpills">
+                  {MCP_TOOLS.map((t) => (
+                    <span key={t} className="ap-toolpill ap-num">{t}</span>
+                  ))}
+                </div>
+
+                <div className="ap-lcard-foot ap-body">
+                  <Sparkles size={14} />
+                  つなぎ方を見る（Claude / Cursor / VS Code / Gemini）
+                </div>
+              </div>
             </div>
 
-            <About />
+            <AdSlot slot="1111111111" format="horizontal" style={{ marginTop: 26 }} />
           </>
         )}
       </div>
+
+      <LaunchFooter sources={index?.sources} onAbout={() => setAbout(true)} />
     </div>
   );
 }
@@ -456,47 +593,105 @@ function PathTrace({ hops, catalog, center, purposeOf, onPick }: {
 /** 出典と、集める情報の説明。
     公共データ利用規約(PDL1.0)は出典と加工した旨の明記を求めている。
     閲覧の統計を取る以上、何を集めて何を集めないかも同じ場所に置く。 */
-function About() {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="ap-footnote" style={{ textAlign: 'center', marginTop: 34, lineHeight: 1.7 }}>
-      <Info size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
-      出典：<a href="https://disclosure2.edinet-fsa.go.jp/" target="_blank" rel="noreferrer"
-        style={{ color: 'var(--blue)' }}>EDINET閲覧サイト</a>（金融庁）、
-      <a href="https://disclosure2dl.edinet-fsa.go.jp/guide/static/submit/WZEK0030.html"
-        target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>PDL1.0</a>
-      <br />
-      有価証券報告書の政策保有株・大株主・主要な顧客・株式事務の記載をもとに作成
-      <br />
-      <button className="ap-btn ap-btn-plain" style={{ marginTop: 8 }}
-        onClick={() => setOpen((v) => !v)}>
-        このアプリについて {open ? '▲' : '▼'}
-      </button>
+/* ---------------- 出典と説明 ----------------
 
-      {open && (
-        <div className="ap-card ap-in" style={{ marginTop: 10, padding: '14px 16px', textAlign: 'left' }}>
+   出典は最下部に固定する。検索中でもカードを見ている間でも同じ場所にあり、
+   本文の流れを切らない。長い説明はそこから開く別の窓に置く。 */
+
+/** 配信 index.json のうち、トップで使うぶんだけ */
+interface LaunchIndex {
+  meta: { generated_at: string; company_count: number };
+  sectors: { code: string; name: string; count: number }[];
+  sources?: { name: string; url: string; license: string; license_url: string; note?: string }[];
+}
+
+const FALLBACK_SOURCES: NonNullable<LaunchIndex['sources']> = [{
+  name: 'EDINET閲覧サイト（金融庁）',
+  url: 'https://disclosure2.edinet-fsa.go.jp/',
+  license: '公共データ利用規約（PDL1.0）',
+  license_url: 'https://disclosure2dl.edinet-fsa.go.jp/guide/static/submit/WZEK0030.html',
+}];
+
+function LaunchFooter({ sources, onAbout }: {
+  sources?: LaunchIndex['sources'];
+  onAbout: () => void;
+}) {
+  const list = sources?.length ? sources : FALLBACK_SOURCES;
+  return (
+    <footer className="ap-launch-footer ap-footnote">
+      <span>
+        出典：{list.map((x, i) => (
+          <span key={x.url}>
+            {i > 0 && '・'}
+            <a href={x.url} target="_blank" rel="noreferrer">{x.name}</a>
+          </span>
+        ))}
+        <span style={{ marginLeft: 6 }}>
+          <a href={list[0].license_url} target="_blank" rel="noreferrer">{list[0].license}</a>
+        </span>
+      </span>
+      <button className="ap-btn ap-btn-plain" onClick={onAbout}>
+        <Info size={12} />
+        このアプリについて
+      </button>
+    </footer>
+  );
+}
+
+function AboutModal({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div className="ap ap-backdrop" onClick={onClose}>
+      <div className="ap-modal" role="dialog" aria-modal="true" aria-label="このアプリについて"
+        onClick={(e) => e.stopPropagation()} style={{ width: 'min(560px, 100%)' }}>
+        <div className="ap-modal-head">
+          <Info size={17} style={{ color: 'var(--blue)' }} />
+          <div style={{ flex: 1 }}>
+            <div className="ap-title3">このアプリについて</div>
+            <div className="ap-caption">扱っている情報と、集めていない情報</div>
+          </div>
+          <button className="ap-iconbtn" aria-label="閉じる" onClick={onClose}><X size={16} /></button>
+        </div>
+
+        <div className="ap-modal-body ap-footnote" style={{ lineHeight: 1.75 }}>
           <div className="ap-headline" style={{ marginBottom: 6 }}>扱っている情報</div>
-          <div style={{ lineHeight: 1.75 }}>
+          <div>
             上場企業が提出した有価証券報告書と臨時報告書から、政策保有株・大株主・
             主要な顧客・企業サイト・提出書類を機械的に抽出したものです。
             数値や関係の記述は企業自身の記載をそのまま出しており、こちらで文章を作っていません。
             投資判断の助言は行いません。
           </div>
 
-          <div className="ap-headline" style={{ margin: '14px 0 6px' }}>集めている情報</div>
-          <div style={{ lineHeight: 1.75 }}>
+          <div className="ap-headline" style={{ margin: '16px 0 6px' }}>集めている情報</div>
+          <div>
             どの銘柄が何回開かれたか、という数だけを記録しています。
             利用者を区別する値（ID・Cookie・端末情報・IPアドレス）は作らず、送らず、保存しません。
             誰が見たかは分からない作りです。
           </div>
 
-          <div className="ap-headline" style={{ margin: '14px 0 6px' }}>使っている技術</div>
-          <div style={{ lineHeight: 1.75 }}>
+          <div className="ap-headline" style={{ margin: '16px 0 6px' }}>使っている技術</div>
+          <div>
             2回目以降の表示は端末内に保存した内容を使うため、通信が発生しません。
             ホーム画面に追加すると、機内でも起動します。
           </div>
+
+          <div className="ap-modal-note" style={{ marginTop: 20 }}>
+            <Info size={13} style={{ flex: '0 0 13px', marginTop: 2 }} />
+            <div style={{ lineHeight: 1.75 }}>
+              出典は <a href="https://disclosure2.edinet-fsa.go.jp/" target="_blank" rel="noreferrer"
+                style={{ color: 'var(--blue)' }}>EDINET閲覧サイト</a>（金融庁）、
+              <a href="https://disclosure2dl.edinet-fsa.go.jp/guide/static/submit/WZEK0030.html"
+                target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>PDL1.0</a>。
+              有価証券報告書の政策保有株・大株主・主要な顧客・株式事務の記載をもとに作成しています。
+            </div>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -827,11 +1022,14 @@ function Controls({ depth, setDepth, hold, setHold, major, setMajor,
 
 /* ---------------- 本体 ---------------- */
 export default function GraphExplorer({ onOpenBrowser, onOpenSettings }: {
-  onOpenBrowser: () => void;
+  /** 業種コードを渡すと、一覧側がその業種を開いた状態で始まる */
+  onOpenBrowser: (sector?: string) => void;
   onOpenSettings: () => void;
 }) {
   const settings = useSettings();
   const [catalog, setCatalog] = useState<Map<string, NodeRec> | null>(null);
+  /* トップの業種カードと出典に使う。グラフ側では使わない */
+  const [index, setIndex] = useState<LaunchIndex | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [center, setCenter] = useState<string | null>(null);
   const [depth, setDepth] = useState<1 | 2>(1);
@@ -922,6 +1120,7 @@ export default function GraphExplorer({ onOpenBrowser, onOpenSettings }: {
           m.set(code, { name, s17, s33, domain, kind: kind ?? 0 });
         }
         setCatalog(m);
+        setIndex(j as LaunchIndex);
       })
       .catch((e) => setError(String(e.message || e)));
   }, []);
@@ -1156,8 +1355,8 @@ export default function GraphExplorer({ onOpenBrowser, onOpenSettings }: {
     </div>;
   }
   if (!center) {
-    return <Launch catalog={catalog} onPick={pick} onOpenBrowser={onOpenBrowser}
-      onOpenSettings={onOpenSettings} />;
+    return <Launch catalog={catalog} index={index} onPick={pick}
+      onOpenBrowser={onOpenBrowser} onOpenSettings={onOpenSettings} />;
   }
 
   const palette = dark
