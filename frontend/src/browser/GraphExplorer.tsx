@@ -5,6 +5,7 @@ import {
   Globe, Network, Loader2, Building2, Newspaper, ChevronsLeft, ChevronsRight,
   SlidersHorizontal, CornerDownRight, Route, Crosshair, Sparkles, Check,
   ScrollText, Info, Megaphone, Settings as SettingsIcon, CircleStop, BarChart3,
+  Bot,
 } from 'lucide-react';
 import './apple.css';
 import type { Detail, ResultRow, TradeRelation, EventItem } from './types';
@@ -21,6 +22,7 @@ import { openSearch } from './search';
 import { recordView } from './analytics';
 import { useSettings, resolveTheme, currentAi } from '../settings';
 import AdSlot from './AdSlot';
+import McpModal from './McpModal';
 
 const BASE = `${import.meta.env.BASE_URL}data/browser`;
 
@@ -110,6 +112,7 @@ function Launch({ catalog, onPick, onOpenBrowser, onOpenSettings }: {
   onOpenSettings: () => void;
 }) {
   const [q, setQ] = useState('');
+  const [mcp, setMcp] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -138,11 +141,20 @@ function Launch({ catalog, onPick, onOpenBrowser, onOpenSettings }: {
 
   return (
     <div className="ap ap-launch">
-      <Tip tip="設定" pos="left" style={{ position: 'absolute', top: 14, right: 16, zIndex: 5 }}>
-        <button className="ap-iconbtn ap-iconbtn-lg" aria-label="設定" onClick={onOpenSettings}>
-          <SettingsIcon size={19} />
-        </button>
-      </Tip>
+      <div style={{ position: 'absolute', top: 14, right: 16, zIndex: 5, display: 'flex', gap: 6 }}>
+        <Tip tip="AIで使う (MCP)" pos="left">
+          <button className="ap-iconbtn ap-iconbtn-lg" aria-label="AIで使う (MCP)"
+            onClick={() => setMcp(true)}>
+            <Bot size={19} />
+          </button>
+        </Tip>
+        <Tip tip="設定" pos="left">
+          <button className="ap-iconbtn ap-iconbtn-lg" aria-label="設定" onClick={onOpenSettings}>
+            <SettingsIcon size={19} />
+          </button>
+        </Tip>
+      </div>
+      {mcp && <McpModal onClose={() => setMcp(false)} />}
       <div className="ap-launch-inner ap-in">
         <div style={{ textAlign: 'center', marginBottom: 26 }}>
           <h1 className="ap-large-title" style={{ fontSize: 32 }}>企業のつながりを見る</h1>

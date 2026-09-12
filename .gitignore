@@ -13,6 +13,8 @@ data/edinet_affiliates/csv_cache/
 
 # 生成物（scripts/export_browser_json.py で作り直せる）
 frontend/public/data/browser/
+# MCP 用の書き出し。3,800 ファイルあり、同じスクリプトで作り直せる
+frontend/public/data/mcp/
 frontend/dist/
 # 密度調査の中間生成物
 data/edinet_affiliates/

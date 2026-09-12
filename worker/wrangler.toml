@@ -7,3 +7,35 @@ binding = "DB"
 database_name = "kabu-stats"
 # npx wrangler d1 create kabu-stats で払い出された id を入れる
 database_id = "9dcf833f-c98d-42a1-912f-8f9c42c66146"
+
+# 平日 09:00〜18:50 JST（UTC で 00:00〜09:50）に10分おき。
+# 1日60回・平日だけなので、Cron の無料枠に十分収まる。
+[triggers]
+crons = ["*/10 0-9 * * 1-5"]
+
+[vars]
+# 使う情報源。既定は EDINET だけ。
+#
+# EDINET は公共データ利用規約(PDL1.0)で再配信まで認められているので、
+# 公開サーバーから配ってよい。tdnet と gnews は配信元が機械的な取得を
+# 禁じているため、ここに書き足したときだけ動く。理由は worker/sources/ の
+# 各ファイルの冒頭に書いてある。
+#
+#   SOURCES = "edinet tdnet"   ← 規約を確かめたうえで足す
+SOURCES = "edinet"
+
+# MCP（/mcp）が読むデータの置き場。画面と同じ書き出しで、1社1ファイルに割ってある。
+# 独自ドメインに移したらここを差し替える。
+MCP_DATA_BASE = "https://yuya011.github.io/kabu-ai/data/mcp"
+
+# 通知の公開鍵。node worker/vapid-keygen.mjs で作った public をここに入れ、
+# private は npx wrangler secret put VAPID_PRIVATE で渡す。
+# 空のままなら通知の口は 503 を返し、画面にも通知の設定が出ない。
+VAPID_PUBLIC = ""
+VAPID_SUBJECT = "mailto:noreply@example.com"
+
+# 秘密は wrangler secret put で渡す（ここには書かない）:
+#   EDINET_KEY     EDINET API のサブスクリプションキー
+#   VAPID_PRIVATE  通知の秘密鍵
+#   COLLECT_TOKEN  POST /collect を手で蹴るための合言葉（任意）
+#   TDNET_API_KEY  JPX の TDnet API を契約したときだけ

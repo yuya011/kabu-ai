@@ -56,9 +56,17 @@ kabu-ai/
 │   ├── factor_analysis.py      # 単一特徴量IC・多重共線性・係数診断スクリプト
 │   ├── evaluator_extended.py   # エンバーゴ付きウォークフォワード評価
 │   ├── evaluator_repaired.py   # 日内ランク正規化・L=7ブロックブートストラップ評価
-│   └── llm_extractor.py        # Qwen2.5-7B による定性特徴量抽出（四半期/本決算分岐プロンプト・再開対応）
+│   ├── llm_extractor.py        # Qwen2.5-7B による定性特徴量抽出（四半期/本決算分岐プロンプト・再開対応）
+│   └── mcp_server.py           # MCP サーバー（手元）。uvx が取り寄せて起動する
 ├── scripts/
-│   └── tdnet_scraper.py        # TDnet適時開示テキスト日次自動収集スクリプト
+│   ├── news_ingest.py          # 企業ニュースの階層化収集（手元のみ・配信物には含めない）
+│   └── tdnet_scraper.py        # TDnet収集（robots.txt により停止。記録として残置）
+├── worker/                     # Cloudflare Workers。閲覧統計・開示速報・リモート MCP
+│   ├── index.js                # ルーティングと Cron の入口
+│   ├── mcp.js                  # MCP サーバー（リモート）。Streamable HTTP を素で実装
+│   ├── sources/                # 情報源のアダプタ（既定で動くのは edinet のみ）
+│   ├── push.js                 # Web Push の送信（VAPID + aes128gcm を素で実装）
+│   └── schema.sql              # D1 のテーブル定義
 ├── data/
 │   ├── extended_clean_dataset.parquet  # 2,901件・T=28日のクリーンデータセット
 │   └── tdnet_disclosures/              # スクレイパーによる日次蓄積Parquet
@@ -90,16 +98,13 @@ python src/factor_analysis.py
 python src/evaluator_repaired.py
 ```
 
-### 2. TDnet 適時開示テキストの日次蓄積
-```bash
-# 日次スクレイピングの実行 (cron等で平日17:00に定期実行)
-python scripts/tdnet_scraper.py
-```
+### 2. 当日の開示の速報
 
-※ cron 設定例（平日18:00に自動実行）:
-```cron
-0 18 * * 1-5 cd /Users/yuyahiraga/Desktop/products/In-house-development/kabu-ai && .venv/bin/python scripts/tdnet_scraper.py >> data/tdnet_disclosures/scraper.log 2>&1
-```
+TDnet のスクレイピングは止めています（`robots.txt` が全面 `Disallow`）。
+いま当日の開示を運んでいるのは Cloudflare Workers の巡回で、取得元は EDINET です。
+[⚡ 開示の速報](#-開示の速報)を参照してください。
+
+`scripts/tdnet_scraper.py` は記録として残していますが、どこからも自動実行していません。
 
 ---
 
@@ -139,9 +144,15 @@ cd frontend && npm install && npm run dev
 |---|---|---|
 | EDINET | 有報の政策保有・保有目的・大株主・企業ドメイン・社名・業種 | ◯ |
 | EDINET | 有報「主要な経営指標等の推移」の業績（売上・利益・自己資本比率・従業員数） | ◯ |
-| Google ニュース RSS | 企業別の報道見出し（取得日時つき） | ◯ |
-| TDnet | 適時開示のタイトル | ◯ |
+| EDINET | 提出書類の履歴と、**当日の開示速報**（Workers が10分おきに巡回） | ◯ |
+| Google ニュース RSS | 企業別の報道見出し（取得日時つき） | **✕**（手元だけ） |
+| TDnet | 適時開示のタイトル | **✕**（取得を停止） |
 | **J-Quants** | 決算数値・市場区分・TOPIX規模区分・サプライズ特徴量 | **✕** |
+
+Google ニュースと TDnet は、どちらも配信元が `robots.txt` で機械的な取得を拒否しており、
+利用規約も再配信を認めていません。ニュースは手元での私的利用に留めて配信物から外し、
+TDnet は取得そのものを止めました。**EDINET は公共データ利用規約(PDL1.0)で商用利用まで
+認められている**ので、公開版の1次情報はこちらに寄せています。
 
 **J-Quants API は私的利用に限定されており、取得したデータを第三者が閲覧できる状態に置くこと、
 およびそのデータを蓄積・中継する構成でアプリを提供することが規約で禁止されています。**
@@ -171,9 +182,32 @@ API は叩かないので、何度でもやり直せる。
 
 | 対象 | 実行場所 | 契機 |
 |---|---|---|
-| ニュース | GitHub Actions | 毎日 06:00 JST（全上場を7日で一周・約11分） |
+| 当日の開示 | Cloudflare Workers | 平日 9:00〜18:50 に10分おき（自動・[⚡ 開示の速報](#-開示の速報)） |
+| ニュース | **手元のマシン** | 任意。配信物には含めない（下記） |
 | 有価証券報告書 | **手元のマシン** | 年数回、手動または cron |
-| サイトの再生成と公開 | GitHub Actions | 上記のどちらかが更新されたとき |
+| サイトの再生成と公開 | GitHub Actions | 毎日 06:00 JST、および `data/` `frontend/` `scripts/` の更新時 |
+
+### ニュースの階層化収集（手元のみ）
+
+Google ニュースは規約と `robots.txt` の双方が自動取得・再表示を禁じているため、
+**配信物には含めず、手元での私的利用に留めています。**
+
+全社を毎日舐めると80分かかる一方、鮮度が日単位で要るのはよく見られている会社だけです。
+そこで重要度で2階層に分けます。
+
+```bash
+python scripts/news_ingest.py --all --rotate 7
+```
+
+| | 対象 | 頻度 |
+|---|---|---|
+| Tier 1 | TOPIX Core30・Large70 と、閲覧の多い上位200社（計300〜400社） | 毎日 |
+| Tier 2 | 残り約3,400社 | 7日で一周 |
+
+Tier 2 は証券コードで決まる曜日に当たるので、同じ会社は必ず同じ間隔で観測されます。
+乱数で選ぶと間隔がばらつき、あとで時系列として扱えなくなります。
+Tier 1 の「閲覧の多い会社」は `GET /trending` から引きます（取れなければ規模区分だけで組みます）。
+TOPIX の規模区分は J-Quants 由来なので、`--public` で組んだ倉庫では空になり、売上上位で代替します。
 
 **有報の取り込みだけは GitHub Actions で動きません。**
 EDINET API はランナー（Azure のデータセンター IP）からのアクセスを 403 で拒否します。
@@ -217,6 +251,125 @@ App Store の審査も年会費も要りません。
 
 モデル名は各社の都合で増減するので、一覧から選ぶほかに直接書ける。
 
+## 🤖 MCP サーバー（対話型AIから直に引く）
+
+画面で見るのが向いているのは、持ち合いの広がりやセクターの分布のような「形」です。
+一方で、複数銘柄の突き合わせや保有目的の読み比べは、対話型AIに任せたほうが早い。
+そこで、同じデータを **MCP（Model Context Protocol）** で Claude・Cursor・VS Code・Gemini から
+引けるようにしてあります。画面はそのまま、AI 用の口を足しただけです。
+
+サイト右上の **🤖 AIで使う (MCP)** から、つなぎ方とクライアントを選べます。
+
+### つなぎ方は2つある
+
+| | リモート | この端末で動かす |
+|---|---|---|
+| 入れるもの | **無し**（URL を渡すだけ） | uv（`uvx` が同梱） |
+| 実体 | `worker/mcp.js`（Cloudflare Workers） | `src/mcp_server.py`（uvx が取り寄せて起動） |
+| 通信 | AI → kabu-ai の Worker → 配信データ | AI → 端末のサーバー → 配信データ |
+| 記録 | **残していない**（`/mcp` は D1 に何も書かない） | こちらを一切通らない |
+
+どちらも同じ5つの道具を、同じデータから返します。
+
+**リモート**（認証不要。この URL を渡すだけ）:
+
+```
+https://kabu-stats.yuya011.workers.dev/mcp
+```
+
+* Claude Desktop / claude.ai … 設定 → コネクタ → カスタムコネクタを追加 → URL を貼る
+* Claude Code … `claude mcp add --transport http kabu-ai https://kabu-stats.yuya011.workers.dev/mcp`
+* Cursor … `~/.cursor/mcp.json` に `{"url": "…/mcp"}`
+* VS Code … `.vscode/mcp.json` に `{"type": "http", "url": "…/mcp"}`（外側の名前は `servers`）
+* Gemini CLI … `~/.gemini/settings.json` に `{"httpUrl": "…/mcp"}`（`url` は SSE 用なので効かない）
+
+Cursor と VS Code はインストール用リンクの口を公開しているので、押すだけで入ります。
+
+[![Cursor に追加](https://img.shields.io/badge/Cursor-%E3%81%AB%E8%BF%BD%E5%8A%A0-000000?logo=cursor)](cursor://anysphere.cursor-deeplink/mcp/install?name=kabu-ai&config=eyJ1cmwiOiJodHRwczovL2thYnUtc3RhdHMueXV5YTAxMS53b3JrZXJzLmRldi9tY3AifQ==)
+[![VS Code に追加](https://img.shields.io/badge/VS_Code-%E3%81%AB%E8%BF%BD%E5%8A%A0-0098FF?logo=visualstudiocode)](https://vscode.dev/redirect/mcp/install?name=kabu-ai&config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fkabu-stats.yuya011.workers.dev%2Fmcp%22%7D)
+
+**この端末で動かす**（通信をこちらに通したくない場合）:
+
+```json
+{
+  "mcpServers": {
+    "kabu-ai": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/yuya011/kabu-ai.git", "kabu-mcp"]
+    }
+  }
+}
+```
+
+### 渡している5つの道具
+
+| ツール | 引数 | 返るもの |
+|---|---|---|
+| `search_company` | `query`, `limit` | 社名・証券コード・業種での銘柄検索 |
+| `get_company_profile` | `code` | 有報「主要な経営指標等の推移」による5期の業績、会計基準、四半期 |
+| `get_holding_network` | `code`, `direction`, `limit` | 政策保有先・保有元・主要取引先・大株主（保有目的の原文つき） |
+| `get_surprise_ranking` | `period`, `top_k` | 決算サプライズの上位銘柄 |
+| `get_disclosures` | `code`, `days` | EDINET の提出書類と、臨時報告書の本文（＋当日の速報） |
+
+### 中身の作り
+
+**倉庫（`data/kabu.duckdb`）ではなく、サイトが配っている静的 JSON を読みます。**
+倉庫は git に入っていないので、`uvx` で取り寄せた利用者の手元にも、Worker の中にも無いからです。
+書き出し済みの JSON なら GitHub Pages から誰でも引けて、しかもサイトと同じものです。
+サイトと MCP でデータを別々に組まないので、片方だけ古いということが起きません。
+
+MCP が読むのは画面用の `data/browser/` ではなく、専用の `data/mcp/` です。
+粒度が違います。画面は近隣の銘柄を続けて開くので上2桁でまとめた 0.5MB のシャードが得ですが、
+MCP は1社ずつ飛び飛びに引かれるので、1社を見るのに 0.5MB を読むことになります。
+Cloudflare Workers の CPU 時間にも収まりません。同じ素材から1社1ファイル（中央値 10KB）に
+割り直したものが `data/mcp/` で、手元版・リモート版の両方がこれを読みます。
+どちらも `scripts/export_browser_json.py` が同時に書き出します。
+
+```
+frontend/public/data/mcp/
+├── index.json      上場 3,855 社の目録（323KB）
+├── c/<コード>.json  企業詳細（中央値 10KB・最大 75KB）
+└── surprise.json   決算サプライズの順位（公開版には入らない）
+```
+
+**リモート版は素の JSON-RPC で書いてあります。** Worker は node_modules を持たない
+素の ESM で、バンドラを挟んでいません。ステートレスな MCP は1往復で終わるので、
+SDK を入れるより短く済みます。トランスポートは現行仕様の **Streamable HTTP** です
+（計画書に書いた SSE は 2024-11-05 版の旧トランスポートで、いまは非推奨）。
+セッションは張らず `Mcp-Session-Id` も出しません（仕様上サーバーの任意）。
+サーバー発の通知を使わないので `GET /mcp` は 405 を返します。
+
+認証は求めていません。返すのは公開データだけで、書き込む口も無いためです。
+`/.well-known/oauth-*` を 404 のままにしてあり、クライアントは「認証不要のサーバー」と読みます。
+
+手元版の環境変数:
+
+| 環境変数 | 既定 | 用途 |
+|---|---|---|
+| `KABU_MCP_DATA` | （リポジトリ内なら自動） | 手元の書き出しを使う。公開版に入れていないデータもこれで読める |
+| `KABU_MCP_BASE` | `https://yuya011.github.io/kabu-ai/data/mcp` | 配信元。独自ドメインに移したとき差し替える |
+| `KABU_MCP_TTL` | `21600`（6時間） | 貯めたぶんの寿命。データは日次更新 |
+| `KABU_MCP_STATS` | `https://kabu-stats.yuya011.workers.dev` | 当日の開示速報の口。空にすると引きにいかない |
+
+リモート版の配信元は `worker/wrangler.toml` の `MCP_DATA_BASE` で差し替えます。
+
+決算サプライズは、元になる決算短信が J-Quants 由来のため公開データに含めていません。
+`get_surprise_ranking` は公開データに対しては空を返し、その理由を添えます。
+手元で `--public` を付けずに書き出したものを `KABU_MCP_DATA` で指すと値が返ります。
+
+### 動作の確認
+
+```bash
+# 手元版
+pip install "mcp>=1.2.0"
+python -c "import sys; sys.path.insert(0,'.'); from src.mcp_server import search_company; print(search_company('キーエンス'))"
+
+# リモート版
+curl -sX POST https://kabu-stats.yuya011.workers.dev/mcp \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | head -c 400
+```
+
 ## 📈 閲覧統計（任意）
 
 「どの企業がどれくらい調べられているか」を貯めるための受け口を `worker/` に置いています。
@@ -230,6 +383,9 @@ npx wrangler d1 execute kabu-stats --file schema.sql --remote
 npx wrangler deploy
 ```
 
+既に展開済みの D1 に後から表を足すときも、同じ `schema.sql` をそのまま流せます
+（すべて `CREATE TABLE IF NOT EXISTS` なので、既存の行は触りません）。
+
 配置したら、フロントのビルド時に送り先を渡します。設定しなければ何も送りません。
 
 ```bash
@@ -238,6 +394,87 @@ VITE_ANALYTICS_URL=https://kabu-stats.yuya011.workers.dev npm run build
 
 公開ビルドでは [.github/workflows/update-and-publish.yml](.github/workflows/update-and-publish.yml) が
 この値を渡している。手元の `npm run dev` では未設定なので何も送らない。
+
+## ⚡ 開示の速報
+
+配信 JSON は1日1回の作り直しなので、その日に出た開示は載りません。
+そこだけを Cloudflare Workers が**平日 9:00〜18:50 に10分おき**で巡回し、D1 に積んでいます。
+画面は概観の「本日の開示」と、銘柄詳細の先頭でそれを読みます。
+
+```
+Cron (10分毎) ──▶ sources/edinet.js ──▶ D1: today_disclosures ──┬─▶ GET /disclosures/today
+                                                                ├─▶ GET /news?code=XXXX
+                                                                └─▶ Web Push（監視銘柄のみ）
+```
+
+### 取得元は入れ替えられる
+
+`worker/sources/` にアダプタとして分けてあり、どれを使うかは `wrangler.toml` の
+`SOURCES` で決まります。**既定は `edinet` だけです。**
+
+| アダプタ | 既定 | 理由 |
+|---|---|---|
+| `edinet` | **有効** | 公共データ利用規約(PDL1.0)。出典を明記すれば再配信まで認められている |
+| `tdnet` | 無効 | `release.tdnet.info/robots.txt` が `User-agent: * / Disallow: /` |
+| `gnews` | 無効 | `news.google.com/robots.txt` が `/rss/` を `Disallow`。規約も再表示を禁じている |
+
+決算短信は TDnet 側にしか出ないため、EDINET だけでは拾えません。
+短信まで速報したいなら、筋は **JPX の TDnet API サービス（有料・再配信可）**を契約して
+`TDNET_API_BASE` を渡すことです。契約すれば `sources/tdnet.js` の JSON 経路だけが動き、
+HTML の解析には落ちません。
+
+`/news` と `/disclosures/today` には 15分・60秒の `Cache-Control` を付けています。
+ただし **`workers.dev` のサブドメインでは Cloudflare の Cache API が働きません**
+（`put` が素通りし、`match` は常に外れる）。独自ドメインに移すまで、キャッシュが効くのは
+各ブラウザの中だけです。既定の構成で外部に出るのは Cron の巡回だけなので実害はありませんが、
+`gnews` のようなオンデマンドのアダプタを有効にするなら、先に独自ドメインへ移してください。
+
+### 展開したら最初に確かめること
+
+**EDINET API が Cloudflare のエッジから通るかは、展開してみるまで分かりません。**
+EDINET は GitHub Actions のランナー（Azure のデータセンター IP）を 403 で拒否します。
+Workers も同じ扱いを受ける可能性があり、その場合 `GET /sources` の `last_status` に
+`edinet: err:...` が残ります。弾かれるようなら、巡回だけを手元の cron から
+`POST /collect` に投げる形（Workers は受け口と配信に徹する）に寄せれば動きます。
+
+### 動作の確認
+
+```bash
+npx wrangler secret put EDINET_KEY        # EDINET API のキー
+npx wrangler secret put COLLECT_TOKEN     # 手で巡回を蹴るための合言葉
+
+# Cron を待たずに1回走らせる。?date= を付ければ過去日も埋め戻せる
+curl -X POST -H "Authorization: Bearer <COLLECT_TOKEN>" \
+  "https://kabu-stats.yuya011.workers.dev/collect?date=2026-09-08"
+
+# いま何が有効で、最後にいつ巡回したか
+curl https://kabu-stats.yuya011.workers.dev/sources
+```
+
+## 🔔 通知（任意）
+
+監視している銘柄に**臨時報告書・大量保有報告書・公開買付の届出**が出たときだけ鳴らします。
+有報や四半期報告書は日程の決まった定期開示なので対象にしていません。
+
+iOS 16.4 以降なら、ホーム画面に追加した PWA のまま受け取れます。
+
+```bash
+node worker/vapid-keygen.mjs              # 鍵をひと組つくる
+# 出力の public を wrangler.toml の [vars] VAPID_PUBLIC に入れる
+npx wrangler secret put VAPID_PRIVATE     # private はこちら
+npx wrangler deploy
+```
+
+`VAPID_PUBLIC` が空のあいだは通知の口が 503 を返し、**設定画面にも通知の欄が出ません**。
+鍵を作り直すと既存の購読は全部無効になるので、一度作ったら使い回してください。
+
+預かるのは「この購読で、この銘柄を鳴らす」という組だけです。購読の宛先は配信元
+（FCM 等）が発行する URL で、こちらから利用者を特定する材料にはなりません。
+監視したい銘柄の一覧は端末の `localStorage` に置き、通知を切れば控えも消します。
+
+送信は `worker/push.js` で RFC 8291（aes128gcm）と RFC 8292（VAPID）を素で実装しています。
+Workers に web-push ライブラリは持ち込めませんが、必要な素材（ECDH P-256・HKDF・
+AES-GCM・ECDSA 署名）は WebCrypto に揃っています。
 
 ## 💰 広告（未設定）
 

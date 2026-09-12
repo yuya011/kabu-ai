@@ -31,6 +31,8 @@ from src.edinet_client import (  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "kabu.duckdb"
 OUT = ROOT / "frontend" / "public" / "data" / "browser"
+# MCP 用。画面用と同じ素材から、サーバーが1件ずつ引ける形に割り直して書く
+MCP_OUT = ROOT / "frontend" / "public" / "data" / "mcp"
 
 
 def num(v):
@@ -688,6 +690,51 @@ def main():
     n_edges = sum(len(a["ho"]) + len(a["mo"]) + len(a["co"]) for a in adj.values())
     print(f"▸ graph/      {len(gshards)} シャード / ノード {len(adj):,} / 有向エッジ {n_edges:,}")
     print(f"\n💾 {OUT}  合計 {total/1024/1024:.1f} MB")
+
+    write_mcp(index, summaries, details)
+
+
+def write_mcp(index, summaries, details):
+    """MCP サーバー（手元の Python / Cloudflare の Worker）が読む形で書き出す。
+
+    画面用の companies/ は上2桁でまとめた 0.5MB のシャードで、
+    1社を引くだけでも全部を読むことになる。画面は近隣の銘柄を続けて開くので
+    それで得をするが、MCP は1社ずつ飛び飛びに引かれるので割が合わない。
+    Worker の CPU 時間にも収まらない。そこで1社1ファイルに割り直す。
+
+    目録も、画面用（index.json）は非上場の相手方まで含む1万件・830KB あるが、
+    MCP で名前しか返せない相手を並べても役に立たないので、上場ぶんだけにする。
+    """
+    meta = {**index["meta"], "sources": index["sources"]}
+    # 目録。[コード, 社名, 17業種コード, 33業種名, ドメイン]
+    listed = [[n[0], n[1], n[2], n[3], n[4]] for n in index["nodes"] if n[5] == 0]
+    total = write(MCP_OUT / "index.json", {
+        "meta": meta,
+        "sectors": [{"code": s["code"], "name": s["name"], "count": s["count"]}
+                    for s in index["sectors"]],
+        "companies": listed,
+    })
+    print(f"\n▸ mcp/index.json  {total/1024:.0f} KB / 上場 {len(listed):,} 社")
+
+    for code, d in details.items():
+        total += write(MCP_OUT / "c" / f"{code}.json", d)
+    print(f"▸ mcp/c/          {len(details):,} ファイル")
+
+    # サプライズは全社を横断して並べる。1ファイルにまとめておけば、
+    # 順位を出すために全社ぶんを読み直さずに済む。
+    rows = []
+    for code, r in summaries.items():
+        if r.get("pctile") is None:
+            continue
+        rows.append({"code": code, "name": r["name"], "s33": r["s33"],
+                     "s17": (details.get(code) or {}).get("s17"),
+                     "period": r.get("period"), "disc_date": r.get("disc_date"),
+                     "progress": r.get("progress"), "pctile": r.get("pctile"),
+                     "excess": r.get("excess")})
+    rows.sort(key=lambda r: -(r["pctile"] or 0))
+    total += write(MCP_OUT / "surprise.json", {"count": len(rows), "companies": rows})
+    print(f"▸ mcp/surprise.json  {len(rows):,} 件")
+    print(f"\n💾 {MCP_OUT}  合計 {total/1024/1024:.1f} MB")
 
 
 def build_trade(code, sells_to, buys_from, hold_by_src, held_by_dst):

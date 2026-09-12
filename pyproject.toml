@@ -1,0 +1,35 @@
+# MCP サーバーを uvx でそのまま起動できるようにするための定義。
+#
+#   uvx --from git+https://github.com/yuya011/kabu-ai.git kabu-mcp
+#
+# 利用者に clone もインストールも求めない。依存は公式 SDK 1つだけで、
+# データの取得は標準ライブラリで済ませてある（起動を軽くするため）。
+# 分析側の依存（pandas / lightgbm 等）は requirements.txt に残してあり、
+# ここには入れない。MCP を使うだけの人に配る必要がないため。
+
+[project]
+name = "kabu-mcp"
+version = "0.1.0"
+description = "日本株の有価証券報告書データ（業績5期・政策保有・取引関係・臨時報告書）を対話型AIに渡す MCP サーバー"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["mcp>=1.2.0"]
+
+[project.urls]
+Homepage = "https://yuya011.github.io/kabu-ai/"
+Repository = "https://github.com/yuya011/kabu-ai"
+
+[project.scripts]
+kabu-mcp = "src.mcp_server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# 配るのは src/ だけ。data/ や frontend/ を巻き込むと配布物が膨らむ。
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "README.md", "pyproject.toml"]

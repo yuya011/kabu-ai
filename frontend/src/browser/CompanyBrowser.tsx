@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   Search, X, ChevronRight, ArrowLeft, Building2, Layers, BarChart3,
   ExternalLink, Landmark, FileText, TrendingUp, Activity, Boxes,
-  Settings as SettingsIcon,
+  Settings as SettingsIcon, Bell, BellRing, RefreshCw, Bot,
 } from 'lucide-react';
 import './apple.css';
 import type {
@@ -10,6 +10,12 @@ import type {
 } from './types';
 import { fetchJSON, loadIndex } from './cache';
 import { openSearch } from './search';
+import {
+  fetchCompanyLive, fetchTodayLive, liveEnabled, ago, clock,
+  type CompanyLive, type LiveItem, type TodayLive,
+} from './live';
+import * as push from './push';
+import McpModal from './McpModal';
 
 const BASE = `${import.meta.env.BASE_URL}data/browser`;
 
@@ -90,7 +96,11 @@ function Stat({ label, value, sub, tone }: {
 }
 
 /* ---------- 概観 ---------- */
-function Overview({ index, onPick }: { index: BrowserIndex; onPick: (s17: string) => void }) {
+function Overview({ index, onPick, onPickCompany }: {
+  index: BrowserIndex;
+  onPick: (s17: string) => void;
+  onPickCompany: (code: string) => void;
+}) {
   const m = index.meta;
   return (
     <div className="ap-in">
@@ -114,6 +124,8 @@ function Overview({ index, onPick }: { index: BrowserIndex; onPick: (s17: string
           sub={`${m.holding_companies.toLocaleString()} 社ぶん取込済`}
         />
       </div>
+
+      <TodayTimeline onPick={onPickCompany} />
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 11 }}>
         <h2 className="ap-title2">業種</h2>
@@ -285,6 +297,7 @@ function CompanyDetail({ d, onPick }: { d: Detail; onPick: (code: string) => voi
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, paddingTop: 6 }}>
+          <WatchButton code={d.code} />
           <SearchBtn name={d.name} />
           <span className="ap-num ter" style={{ fontSize: 13 }}>{d.code}</span>
         </div>
@@ -298,6 +311,8 @@ function CompanyDetail({ d, onPick }: { d: Detail; onPick: (code: string) => voi
         {d.fiscal_year_end && <span className="ap-badge">決算 {d.fiscal_year_end}</span>}
         {d.margin_type && <span className="ap-badge">{d.margin_type}</span>}
       </div>
+
+      <LiveDisclosures code={d.code} name={d.name} />
 
       <div className="ap-stats" style={{ marginBottom: 22 }}>
         <Stat label="売上高" value={oku(d.sales)} sub={d.period ? `${d.period} 累計` : undefined} />
@@ -516,6 +531,215 @@ function CompanyDetail({ d, onPick }: { d: Detail; onPick: (code: string) => voi
   );
 }
 
+/* ---------- 速報 ----------
+
+   静的な配信データは1日1回の作り直しなので、その日に出た開示は載らない。
+   そこだけ Worker が10分おきに集めていて、画面を開いたときに引きに行く。
+
+   取りに行っている間も画面は止めない。骨組みを先に描いて高さを確保しておき、
+   届いたら差し替える。取れなかったときは枠ごと消えて、静的データだけが残る。
+   速報は「あれば嬉しい」もので、これが落ちて企業ブラウザが使えなくなってはいけない。 */
+
+function Skeleton({ rows = 3 }: { rows?: number }) {
+  const widths = ['46%', '62%', '38%', '55%'];
+  return (
+    <>
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="ap-row" style={{ gap: 10 }}>
+          <div className="ap-skel" style={{ width: 34, flex: '0 0 34px' }} />
+          <div className="ap-skel" style={{ width: widths[i % widths.length] }} />
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** 開示1件。onPick があれば行は銘柄へ、無ければ書類そのものへ飛ぶ */
+function LiveRow({ it, onPick }: { it: LiveItem; onPick?: (code: string) => void }) {
+  const inner = (
+    <>
+      <span className="ap-num ap-timeline-time">{clock(it.disclosed_at)}</span>
+      {onPick && <span className="ap-num ter" style={{ fontSize: 11, width: 40 }}>{it.code}</span>}
+      {onPick && it.name && (
+        <span className="ap-headline" style={{
+          width: 128, flex: '0 0 128px', overflow: 'hidden',
+          textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{it.name}</span>
+      )}
+      <span className="ap-body" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {it.title}
+      </span>
+      {/* 区分は表題の頭から取っているので、表題そのものと同じことが多い。
+          そのときは出しても情報が増えないので落とす */}
+      {it.category && it.category !== it.title && (
+        <span className="ap-badge">{it.category}</span>
+      )}
+    </>
+  );
+
+  if (onPick) {
+    return (
+      <div className="ap-row" data-tap="true" data-flag={it.important} onClick={() => onPick(it.code)}>
+        {inner}
+        <a href={it.url} target="_blank" rel="noreferrer" className="ap-iconbtn"
+          title="書類を開く" aria-label="書類を開く"
+          onClick={(e) => e.stopPropagation()} style={{ marginLeft: 'auto' }}>
+          <ExternalLink size={12} />
+        </a>
+        <ChevronRight size={13} className="ter" />
+      </div>
+    );
+  }
+
+  return (
+    <a className="ap-row" data-tap="true" data-flag={it.important}
+      href={it.url} target="_blank" rel="noreferrer"
+      style={{ textDecoration: 'none', color: 'inherit' }}>
+      {inner}
+      <ExternalLink size={12} className="ter" style={{ marginLeft: 'auto', flex: '0 0 12px' }} />
+    </a>
+  );
+}
+
+/** 「⚪︎分前に更新」と再読み込み。巡回の時刻を出す（画面を開いた時刻ではない） */
+function Freshness({ at, busy, onReload }: {
+  at: string | null; busy: boolean; onReload: () => void;
+}) {
+  return (
+    <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
+      {at && <span className="ap-footnote">{ago(at)}に更新</span>}
+      <button className="ap-iconbtn" title="読み直す" aria-label="読み直す"
+        disabled={busy} onClick={onReload}>
+        <RefreshCw size={12} style={busy ? { opacity: 0.4 } : undefined} />
+      </button>
+    </span>
+  );
+}
+
+/** 銘柄詳細の先頭。当日の開示があれば最優先で出す */
+function LiveDisclosures({ code, name }: { code: string; name: string }) {
+  const [data, setData] = useState<CompanyLive | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!liveEnabled) return;
+    let alive = true;
+    setBusy(true);
+    fetchCompanyLive(code, name).then((d) => {
+      if (!alive) return;
+      setData(d);
+      setBusy(false);
+    });
+    return () => { alive = false; };
+  }, [code, name, tick]);
+
+  if (!liveEnabled) return null;
+  // 何も無いなら枠ごと出さない。空の見出しは情報が増えないのに場所だけ取る
+  if (!busy && !data?.items.length) return null;
+
+  return (
+    <div className="ap-card" style={{ marginBottom: 16 }}>
+      <div className="ap-card-head">
+        <span className="ap-live" />
+        <span className="ap-title3">最新の開示</span>
+        <Freshness at={data?.crawled_at ?? null} busy={busy} onReload={() => setTick((t) => t + 1)} />
+      </div>
+      {busy && !data ? <Skeleton rows={2} />
+        : data!.items.map((it) => <LiveRow key={it.id} it={it} />)}
+    </div>
+  );
+}
+
+/** 概観の速報タイムライン。全銘柄ぶんの当日の開示を新しい順に */
+function TodayTimeline({ onPick }: { onPick: (code: string) => void }) {
+  const [data, setData] = useState<TodayLive | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [tick, setTick] = useState(0);
+  const [all, setAll] = useState(false);
+
+  useEffect(() => {
+    if (!liveEnabled) return;
+    let alive = true;
+    setBusy(true);
+    fetchTodayLive(40).then((d) => {
+      if (!alive) return;
+      setData(d);
+      setBusy(false);
+    });
+    return () => { alive = false; };
+  }, [tick]);
+
+  if (!liveEnabled) return null;
+  if (!busy && !data?.items.length) return null;
+
+  const items = data?.items ?? [];
+  const shown = all ? items : items.slice(0, 8);
+
+  return (
+    <div style={{ marginBottom: 26 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
+        <span className="ap-live" />
+        <h2 className="ap-title2">{data && !data.today ? `${data.ymd.slice(5).replace('-', '/')} の開示` : '本日の開示'}</h2>
+        {data && (
+          <span className="ap-footnote">
+            {data.today ? '10分おきに取り直しています' : '直近の営業日ぶん'}
+          </span>
+        )}
+        <Freshness at={data?.crawled_at ?? null} busy={busy} onReload={() => setTick((t) => t + 1)} />
+      </div>
+
+      <div className="ap-card">
+        {busy && !data ? <Skeleton rows={4} />
+          : shown.map((it) => <LiveRow key={it.id} it={it} onPick={onPick} />)}
+        {items.length > shown.length && (
+          <div className="ap-row" data-tap="true" onClick={() => setAll(true)}>
+            <span className="ap-footnote">残り {items.length - shown.length} 件を出す</span>
+            <ChevronRight size={13} className="ter" style={{ marginLeft: 'auto' }} />
+          </div>
+        )}
+      </div>
+
+      {data?.sources?.length ? (
+        <div className="ap-footnote" style={{ marginTop: 7 }}>
+          出典：{data.sources.map((a) => (
+            <a key={a.id} href={a.url} target="_blank" rel="noreferrer"
+              style={{ color: 'var(--blue)' }}>{a.name}</a>
+          )).reduce((acc: React.ReactNode[], el, i) => (i ? [...acc, '・', el] : [el]), [])}
+          {'（'}{data.sources[0].license}{'）'}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** この銘柄の重要な開示を通知する。初回は許可のダイアログが出る */
+function WatchButton({ code }: { code: string }) {
+  const watched = push.useWatch().includes(code);
+  const [state, setState] = useState<push.PushState>('unsupported');
+
+  useEffect(() => { push.state().then(setState); }, []);
+
+  // 端末かサーバのどちらかが通知を扱えないなら、ボタンごと出さない
+  if (state === 'unsupported' || state === 'unavailable') return null;
+
+  const click = async () => {
+    await push.toggleWatch(code);
+    // 入れるときに購読がまだなら、ここで許可を取る
+    if (!watched && state !== 'on') setState(await push.enable());
+  };
+
+  const denied = state === 'denied';
+  return (
+    <button className="ap-iconbtn"
+      title={denied ? 'ブラウザ側で通知が拒否されています'
+        : watched ? '通知を止める' : 'この銘柄の重要な開示を通知する'}
+      aria-label="通知" aria-pressed={watched} onClick={click}>
+      {watched ? <BellRing size={13} style={{ color: 'var(--blue)' }} /> : <Bell size={13} />}
+    </button>
+  );
+}
+
 function Card({ icon, title, note, children }: {
   icon: React.ReactNode; title: string; note?: string; children: React.ReactNode;
 }) {
@@ -544,6 +768,7 @@ export default function CompanyBrowser({ onOpenDashboard, onBackToGraph, onOpenS
   const [code, setCode] = useState<string | null>(null);
   const [cols, setCols] = useState<ColMode>('basic');
   const [query, setQuery] = useState('');
+  const [mcp, setMcp] = useState(false);
 
   const sectorCache = useRef(new Map<string, SectorFile>());
   const shardCache = useRef(new Map<string, Record<string, Detail>>());
@@ -656,6 +881,9 @@ export default function CompanyBrowser({ onOpenDashboard, onBackToGraph, onOpenS
           )}
 
           <div className="ap-sidebar-label">この端末</div>
+          <div className="ap-srow" onClick={() => setMcp(true)}>
+            <Bot size={13} /> AIで使う (MCP)
+          </div>
           <div className="ap-srow" onClick={onOpenSettings}>
             <SettingsIcon size={13} /> 設定
           </div>
@@ -725,6 +953,10 @@ export default function CompanyBrowser({ onOpenDashboard, onBackToGraph, onOpenS
               />
               {query && <X size={13} className="ter" onClick={() => setQuery('')} style={{ cursor: 'default' }} />}
             </div>
+            <button className="ap-iconbtn ap-iconbtn-lg" title="AIで使う (MCP)"
+              aria-label="AIで使う (MCP)" onClick={() => setMcp(true)}>
+              <Bot size={19} />
+            </button>
             <button className="ap-iconbtn ap-iconbtn-lg" title="設定" aria-label="設定"
               onClick={onOpenSettings}>
               <SettingsIcon size={19} />
@@ -779,11 +1011,13 @@ export default function CompanyBrowser({ onOpenDashboard, onBackToGraph, onOpenS
                 <CompanyTable rows={rows} cols={cols} onPick={openCompany} />
               </div>
             ) : (
-              <Overview index={index} onPick={openSector} />
+              <Overview index={index} onPick={openSector} onPickCompany={openCompany} />
             )}
           </div>
         </div>
       </div>
+
+      {mcp && <McpModal onClose={() => setMcp(false)} />}
     </div>
   );
 }
