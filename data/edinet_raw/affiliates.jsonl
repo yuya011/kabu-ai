@@ -998,3 +998,17 @@
 {"doc_id": "S100YYKB", "src_sec": "523A0", "dst_sec": "52790", "dst_name": "日本興業株式会社", "raw_name": "日本興業株式会社 （注）1、6", "category": "連結子会社", "voting_pct": 100.0}
 {"doc_id": "S100YXMA", "src_sec": "38560", "dst_sec": "63340", "dst_name": "明治機械株式会社", "raw_name": "明治機械株式会社 (注)３", "category": "持分法適用関連会社", "voting_pct": 36.3}
 {"doc_id": "S100YZFU", "src_sec": "581A0", "dst_sec": "24320", "dst_name": "株式会社ディー・エヌ・エー", "raw_name": "㈱ディー・エヌ・エー （注）６", "category": "その他の関係会社", "voting_pct": 25.7}
+{"doc_id": "S100Z2KC", "src_sec": "48470", "dst_sec": "79120", "dst_name": "大日本印刷株式会社", "raw_name": "大日本印刷株式会社", "category": "親会社", "voting_pct": 50.78}
+{"doc_id": "S100Z2RN", "src_sec": "43910", "dst_sec": "47220", "dst_name": "フューチャー株式会社", "raw_name": "フューチャー株式会社 (注）", "category": "その他の関係会社", "voting_pct": 27.5}
+{"doc_id": "S100Z39P", "src_sec": "43260", "dst_sec": "94320", "dst_name": "ＮＴＴ株式会社", "raw_name": "NTT㈱ (注)３", "category": "親会社", "voting_pct": 51.0}
+{"doc_id": "S100Z42G", "src_sec": "75320", "dst_sec": "26690", "dst_name": "カネ美食品株式会社", "raw_name": "カネ美食品㈱ （注）４．６", "category": "連結子会社", "voting_pct": 40.3}
+{"doc_id": "S100Z3E4", "src_sec": "78090", "dst_sec": "94090", "dst_name": "株式会社テレビ朝日ホールディングス", "raw_name": "株式会社テレビ朝日 ホールディングス (注)１", "category": "連結子会社", "voting_pct": 15.12}
+{"doc_id": "S100Z3FB", "src_sec": "62270", "dst_sec": "41860", "dst_name": "東京応化工業株式会社", "raw_name": "東京応化工業株式会社 （注４）", "category": "その他の関係会社", "voting_pct": 17.6}
+{"doc_id": "S100Z3FB", "src_sec": "62270", "dst_sec": "62350", "dst_name": "株式会社オプトラン", "raw_name": "株式会社オプトラン （注４）", "category": "その他の関係会社", "voting_pct": 17.6}
+{"doc_id": "S100Z45U", "src_sec": "30760", "dst_sec": "99080", "dst_name": "日本電計株式会社", "raw_name": "日本電計㈱ （注）４", "category": "持分法適用関連会社", "voting_pct": 21.5}
+{"doc_id": "S100Z3KY", "src_sec": "67280", "dst_sec": "63840", "dst_name": "株式会社昭和真空", "raw_name": "㈱昭和真空 （注）４", "category": "持分法適用関連会社", "voting_pct": 21.5}
+{"doc_id": "S100Z35T", "src_sec": "65480", "dst_sec": "60300", "dst_name": "株式会社アドベンチャー", "raw_name": "株式会社 アドベンチャー (注)１", "category": "親会社", "voting_pct": 53.0}
+{"doc_id": "S100Z3FV", "src_sec": "60300", "dst_sec": "65480", "dst_name": "株式会社旅工房", "raw_name": "株式会社旅工房 （注３、５）", "category": "連結子会社", "voting_pct": 53.0}
+{"doc_id": "S100Z3DI", "src_sec": "603A0", "dst_sec": "80010", "dst_name": "伊藤忠商事株式会社", "raw_name": "伊藤忠商事株式会社 （注）", "category": "その他の関係会社", "voting_pct": 24.7}
+{"doc_id": "S100Z3R0", "src_sec": "95650", "dst_sec": "39040", "dst_name": "株式会社カヤック", "raw_name": "株式会社カヤック (注)１", "category": "親会社", "voting_pct": 51.4}
+{"doc_id": "S100Z0VF", "src_sec": "00000", "dst_sec": "40040", "dst_name": "株式会社レゾナック・ホールディングス", "raw_name": "㈱レゾナック・ホールディングス", "category": "親会社", "voting_pct": null}

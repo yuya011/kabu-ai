@@ -2662,3 +2662,83 @@
 {"doc_id": "S100YYOW", "src_sec": "464A0", "raw_name": "㈱トライサット・コンステレーション", "dst_sec": null, "dst_name": null, "amount": 1166000000.0, "segment": "地球観測衛星データ事業"}
 {"doc_id": "S100YYOW", "src_sec": "464A0", "raw_name": "スカパーＪＳＡＴ㈱", "dst_sec": "94120", "dst_name": "スカパーＪＳＡＴ株式会社", "amount": 382000000.0, "segment": "地球観測衛星データ事業"}
 {"doc_id": "S100YZFU", "src_sec": "581A0", "raw_name": "㈱フリークアウト", "dst_sec": null, "dst_name": null, "amount": 6949000000.0, "segment": "GO事業"}
+{"doc_id": "S100Z2KC", "src_sec": "48470", "raw_name": "イオンフィナンシャルサービス㈱", "dst_sec": "85700", "dst_name": "イオンフィナンシャルサービス株式会社", "amount": 1917846000.0, "segment": null}
+{"doc_id": "S100Z29T", "src_sec": "79620", "raw_name": "アスクル㈱", "dst_sec": "26780", "dst_name": "アスクル株式会社", "amount": 4145660000.0, "segment": "文具事務用品事業、ライフスタイル用品事業"}
+{"doc_id": "S100Z29T", "src_sec": "79620", "raw_name": "エコール流通グループ㈱", "dst_sec": null, "dst_name": null, "amount": 4366078000.0, "segment": "文具事務用品事業、ライフスタイル用品事業"}
+{"doc_id": "S100Z3O7", "src_sec": "13810", "raw_name": "フードリンク株式会社", "dst_sec": null, "dst_name": null, "amount": 5967000000.0, "segment": "食品"}
+{"doc_id": "S100Z3O7", "src_sec": "13810", "raw_name": "株式会社ニチレイフーズ", "dst_sec": null, "dst_name": null, "amount": 5254000000.0, "segment": "食品"}
+{"doc_id": "S100Z3O7", "src_sec": "13810", "raw_name": "日本ハム株式会社", "dst_sec": "22820", "dst_name": "日本ハム株式会社", "amount": 3911000000.0, "segment": "食品"}
+{"doc_id": "S100Z37I", "src_sec": "93460", "raw_name": "神奈川県国民健康保険団体連合会", "dst_sec": null, "dst_name": null, "amount": 2169092000.0, "segment": null}
+{"doc_id": "S100Z37I", "src_sec": "93460", "raw_name": "埼玉県国民健康保険団体連合会", "dst_sec": null, "dst_name": null, "amount": 1429159000.0, "segment": null}
+{"doc_id": "S100Z37I", "src_sec": "93460", "raw_name": "東京都国民健康保険団体連合会", "dst_sec": null, "dst_name": null, "amount": 1298961000.0, "segment": null}
+{"doc_id": "S100Z37I", "src_sec": "93460", "raw_name": "千葉県国民健康保険団体連合会", "dst_sec": null, "dst_name": null, "amount": 1108932000.0, "segment": null}
+{"doc_id": "S100Z39X", "src_sec": "44950", "raw_name": "株式会社NTTドコモ及びそのグループ会社", "dst_sec": null, "dst_name": null, "amount": 2101231000.0, "segment": "CLOMO事業"}
+{"doc_id": "S100Z359", "src_sec": "63400", "raw_name": "ニプロ株式会社", "dst_sec": "80860", "dst_name": "ニプロ株式会社", "amount": 22850000000.0, "segment": "メカトロシステム事業および パッケージングプラント事業"}
+{"doc_id": "S100Z359", "src_sec": "63400", "raw_name": "株式会社アセプティック・システム", "dst_sec": null, "dst_name": null, "amount": 15117000000.0, "segment": "パッケージングプラント事業"}
+{"doc_id": "S100Z3JY", "src_sec": "23850", "raw_name": "高浪控股股份有限公司", "dst_sec": null, "dst_name": null, "amount": 657125000.0, "segment": "化粧品、健康補助食品"}
+{"doc_id": "S100Z3IZ", "src_sec": "47670", "raw_name": "株式会社博報堂", "dst_sec": null, "dst_name": null, "amount": 4751879000.0, "segment": "イベント・プロモーションの企画・制作"}
+{"doc_id": "S100Z3CO", "src_sec": "62390", "raw_name": "Honeywell UOP", "dst_sec": null, "dst_name": null, "amount": 1683096000.0, "segment": "エネルギー関連事業"}
+{"doc_id": "S100Z42D", "src_sec": "50740", "raw_name": "九州電力送配電株式会社", "dst_sec": null, "dst_name": null, "amount": 8777000000.0, "segment": "エネルギーサプライ事業"}
+{"doc_id": "S100Z2G0", "src_sec": "91590", "raw_name": "株式会社NTTドコモ", "dst_sec": null, "dst_name": null, "amount": 473568000.0, "segment": "TGCプロデュース領域、コンテンツプロデュース・ブランディング領域"}
+{"doc_id": "S100Z37J", "src_sec": "32420", "raw_name": "三井不動産投資顧問株式会社", "dst_sec": null, "dst_name": null, "amount": 14960000000.0, "segment": "不動産事業"}
+{"doc_id": "S100Z3AD", "src_sec": "94500", "raw_name": "株式会社 U-NEXT LIVING PARTNERS", "dst_sec": null, "dst_name": null, "amount": 2475000000.0, "segment": "通信事業"}
+{"doc_id": "S100Z45E", "src_sec": "92190", "raw_name": "西日本旅客鉄道㈱", "dst_sec": "90210", "dst_name": "西日本旅客鉄道株式会社", "amount": 1268569000.0, "segment": "Data-Informed事業"}
+{"doc_id": "S100Z2S2", "src_sec": "94210", "raw_name": "（株）ジェイ・コミュニケーション", "dst_sec": null, "dst_name": null, "amount": 1782556000.0, "segment": "モバイル事業"}
+{"doc_id": "S100Z2S2", "src_sec": "94210", "raw_name": "（株）バンダイナムコエンターテインメント", "dst_sec": null, "dst_name": null, "amount": 1776188000.0, "segment": "ゲーム事業"}
+{"doc_id": "S100Z2S2", "src_sec": "94210", "raw_name": "（株）ＳＮＫ", "dst_sec": null, "dst_name": null, "amount": 1458771000.0, "segment": "ゲーム事業"}
+{"doc_id": "S100Z2S2", "src_sec": "94210", "raw_name": "ガンホー・オンライン・エンターテイメント（株）", "dst_sec": "37650", "dst_name": "ガンホー・オンライン・エンターテイメント株式会社", "amount": 1054451000.0, "segment": "ゲーム事業"}
+{"doc_id": "S100Z2S2", "src_sec": "94210", "raw_name": "任天堂（株）", "dst_sec": "79740", "dst_name": "任天堂株式会社", "amount": 1001595000.0, "segment": "ゲーム事業"}
+{"doc_id": "S100Z3D3", "src_sec": "52560", "raw_name": "株式会社内田洋行", "dst_sec": "80570", "dst_name": "株式会社内田洋行", "amount": 376384000.0, "segment": "－"}
+{"doc_id": "S100Z3D3", "src_sec": "52560", "raw_name": "株式会社まちのわ", "dst_sec": null, "dst_name": null, "amount": 300249000.0, "segment": "－"}
+{"doc_id": "S100Z3O3", "src_sec": "14140", "raw_name": "東日本高速道路株式会社", "dst_sec": null, "dst_name": null, "amount": 19887000000.0, "segment": "国内建設"}
+{"doc_id": "S100Z3O3", "src_sec": "14140", "raw_name": "西日本高速道路株式会社", "dst_sec": null, "dst_name": null, "amount": 10016000000.0, "segment": "国内建設"}
+{"doc_id": "S100Z3O3", "src_sec": "14140", "raw_name": "国土交通省", "dst_sec": null, "dst_name": null, "amount": 8920000000.0, "segment": "国内建設"}
+{"doc_id": "S100Z3AF", "src_sec": "91650", "raw_name": "株式会社デンソー", "dst_sec": "69020", "dst_name": "株式会社デンソー", "amount": 691809000.0, "segment": "信頼性評価事業、微細加工事業"}
+{"doc_id": "S100Z3FH", "src_sec": "378A0", "raw_name": "株式会社ＯＯＨメディア・ソリューション", "dst_sec": null, "dst_name": null, "amount": 1117419000.0, "segment": "広告事業"}
+{"doc_id": "S100Z3FH", "src_sec": "378A0", "raw_name": "株式会社博報堂", "dst_sec": null, "dst_name": null, "amount": 538386000.0, "segment": "〃"}
+{"doc_id": "S100Z35F", "src_sec": "67850", "raw_name": "住友電装㈱", "dst_sec": null, "dst_name": null, "amount": 9704211000.0, "segment": "金型・部品・機械器具"}
+{"doc_id": "S100Z35F", "src_sec": "67850", "raw_name": "Fujikura Conec (THAILAND)LTD.", "dst_sec": null, "dst_name": null, "amount": 4111537000.0, "segment": "部品"}
+{"doc_id": "S100Z35F", "src_sec": "67850", "raw_name": "テルモ㈱", "dst_sec": "45430", "dst_name": "テルモ株式会社", "amount": 3589527000.0, "segment": "部品・機械器具"}
+{"doc_id": "S100Z44N", "src_sec": "77810", "raw_name": "テルモ株式会社", "dst_sec": "45430", "dst_name": "テルモ株式会社", "amount": 5041300000.0, "segment": "インソーシング・派遣事業"}
+{"doc_id": "S100Z3BW", "src_sec": "78120", "raw_name": "エプソングループ", "dst_sec": null, "dst_name": null, "amount": 2374804000.0, "segment": "東南アジア／南アジア地域"}
+{"doc_id": "S100Z3RZ", "src_sec": "40680", "raw_name": "ソフトバンク株式会社", "dst_sec": "94340", "dst_name": "ソフトバンク株式会社", "amount": 1536734000.0, "segment": "インフラテック事業"}
+{"doc_id": "S100Z3RZ", "src_sec": "40680", "raw_name": "ＳＢエンジニアリング株式会社", "dst_sec": null, "dst_name": null, "amount": 1272487000.0, "segment": "インフラテック事業"}
+{"doc_id": "S100Z3RZ", "src_sec": "40680", "raw_name": "東京電力パワーグリッド株式会社", "dst_sec": null, "dst_name": null, "amount": 891542000.0, "segment": "インフラテック事業"}
+{"doc_id": "S100Z3QG", "src_sec": "24280", "raw_name": "アマゾンジャパン合同会社", "dst_sec": null, "dst_name": null, "amount": 1564426000.0, "segment": "決済・認証事業"}
+{"doc_id": "S100Z3QG", "src_sec": "24280", "raw_name": "株式会社ＫＯＭＯＪＵ", "dst_sec": null, "dst_name": null, "amount": 1430607000.0, "segment": "決済・認証事業"}
+{"doc_id": "S100Z3E4", "src_sec": "78090", "raw_name": "GMOペイメントゲートウェイ㈱(注)", "dst_sec": "37690", "dst_name": "ＧＭＯペイメントゲートウェイ株式会社", "amount": 4299290000.0, "segment": "ホビー関連品製造販売事業"}
+{"doc_id": "S100Z3E4", "src_sec": "78090", "raw_name": "宮沢模型㈱", "dst_sec": null, "dst_name": null, "amount": 1597331000.0, "segment": "ホビー関連品製造販売事業"}
+{"doc_id": "S100Z32V", "src_sec": "69200", "raw_name": "Taiwan Semiconductor Manufacturing Company Limited", "dst_sec": null, "dst_name": null, "amount": 49244000000.0, "segment": "検査・測定装置事業"}
+{"doc_id": "S100Z32V", "src_sec": "69200", "raw_name": "Intel Corporation", "dst_sec": null, "dst_name": null, "amount": 47692000000.0, "segment": "検査・測定装置事業"}
+{"doc_id": "S100Z32V", "src_sec": "69200", "raw_name": "Samsung Electronics Co., Ltd.", "dst_sec": null, "dst_name": null, "amount": 46528000000.0, "segment": "検査・測定装置事業"}
+{"doc_id": "S100Z3FB", "src_sec": "62270", "raw_name": "MARKETECH INTERNATIONAL CORP.", "dst_sec": null, "dst_name": null, "amount": 24011511000.0, "segment": "半導体関連事業"}
+{"doc_id": "S100Z483", "src_sec": "60360", "raw_name": "ＥＮＥＯＳトレーディング株式会社", "dst_sec": null, "dst_name": null, "amount": 2725764000.0, "segment": "キーパー製品等関連事業"}
+{"doc_id": "S100Z2QT", "src_sec": "56980", "raw_name": "ＳＥＡＨ　ＢＥＳＴＥＥＬ", "dst_sec": null, "dst_name": null, "amount": 4962736000.0, "segment": "グローバルトレーディング事業"}
+{"doc_id": "S100Z3TC", "src_sec": "197A0", "raw_name": "スズケングループ", "dst_sec": null, "dst_name": null, "amount": 10014928000.0, "segment": null}
+{"doc_id": "S100Z2TG", "src_sec": "40730", "raw_name": "株式会社パン・パシフィック・インターナショナルホールディングス", "dst_sec": "75320", "dst_name": "株式会社パン・パシフィック・インターナショナルホールディングス", "amount": 485215000.0, "segment": "ペイメントインテグレーション事業 ペイメントサービス事業"}
+{"doc_id": "S100Z2TG", "src_sec": "40730", "raw_name": "ユニー株式会社", "dst_sec": null, "dst_name": null, "amount": 299262000.0, "segment": "ペイメントインテグレーション事業"}
+{"doc_id": "S100Z45A", "src_sec": "95140", "raw_name": "九州電力送配電株式会社", "dst_sec": null, "dst_name": null, "amount": 6466000000.0, "segment": "グリーンエナジー事業"}
+{"doc_id": "S100Z45A", "src_sec": "95140", "raw_name": "東京電力パワーグリッド株式会社", "dst_sec": null, "dst_name": null, "amount": 4092000000.0, "segment": "グリーンエナジー事業"}
+{"doc_id": "S100Z45A", "src_sec": "95140", "raw_name": "関西電力送配電株式会社", "dst_sec": null, "dst_name": null, "amount": 2780000000.0, "segment": "グリーンエナジー事業"}
+{"doc_id": "S100Z3F1", "src_sec": "36320", "raw_name": "Ａｐｐｌｅ　Ｉｎｃ．", "dst_sec": null, "dst_name": null, "amount": 7188000000.0, "segment": null}
+{"doc_id": "S100Z3F1", "src_sec": "36320", "raw_name": "Ｇｏｏｇｌｅ　Ｉｎｃ．", "dst_sec": null, "dst_name": null, "amount": 7677000000.0, "segment": null}
+{"doc_id": "S100Z3F1", "src_sec": "36320", "raw_name": "Ｓｔｒｉｐｅ，Ｉｎｃ．", "dst_sec": null, "dst_name": null, "amount": 6784000000.0, "segment": null}
+{"doc_id": "S100Z46V", "src_sec": "50340", "raw_name": "㈱ジョイフル", "dst_sec": "99420", "dst_name": "株式会社ジョイフル", "amount": 636334000.0, "segment": null}
+{"doc_id": "S100Z42X", "src_sec": "66620", "raw_name": "積水ハウス(株)", "dst_sec": "19280", "dst_name": "積水ハウス株式会社", "amount": 381452000.0, "segment": "IoT事業"}
+{"doc_id": "S100Z42X", "src_sec": "66620", "raw_name": "オリックス自動車(株)", "dst_sec": null, "dst_name": null, "amount": 102391000.0, "segment": "IoT事業"}
+{"doc_id": "S100Z42X", "src_sec": "66620", "raw_name": "住友理工(株)", "dst_sec": null, "dst_name": null, "amount": 99898000.0, "segment": "製造受託事業"}
+{"doc_id": "S100Z42X", "src_sec": "66620", "raw_name": "明治安田システム・テクノロジー(株)", "dst_sec": null, "dst_name": null, "amount": 65880000.0, "segment": "開発受託事業"}
+{"doc_id": "S100Z2Z6", "src_sec": "92730", "raw_name": "扶桑薬品工業株式会社", "dst_sec": "45380", "dst_name": "扶桑薬品工業株式会社", "amount": 5641825000.0, "segment": "原薬販売事業 及び 医薬品製造販売事業"}
+{"doc_id": "S100Z2Z6", "src_sec": "92730", "raw_name": "東和薬品株式会社", "dst_sec": "45530", "dst_name": "東和薬品株式会社", "amount": 3003253000.0, "segment": "原薬販売事業"}
+{"doc_id": "S100Z33F", "src_sec": "77070", "raw_name": "ELITech Group S.p.A", "dst_sec": null, "dst_name": null, "amount": 3256333000.0, "segment": null}
+{"doc_id": "S100Z33F", "src_sec": "77070", "raw_name": "PHC株式会社", "dst_sec": null, "dst_name": null, "amount": 266287000.0, "segment": null}
+{"doc_id": "S100Z3JM", "src_sec": "94440", "raw_name": "株式会社オーレンジ", "dst_sec": null, "dst_name": null, "amount": 196640000.0, "segment": "移動体通信関連事業"}
+{"doc_id": "S100Z3JM", "src_sec": "94440", "raw_name": "ソフトバンク株式会社", "dst_sec": "94340", "dst_name": "ソフトバンク株式会社", "amount": 35352000.0, "segment": "移動体通信関連事業"}
+{"doc_id": "S100Z3JM", "src_sec": "94440", "raw_name": "ＫＤＤＩ株式会社", "dst_sec": "94330", "dst_name": "ＫＤＤＩ株式会社", "amount": 11307000.0, "segment": "移動体通信関連事業"}
+{"doc_id": "S100Z32B", "src_sec": "92270", "raw_name": "㈱レゾナック", "dst_sec": null, "dst_name": null, "amount": 350950000.0, "segment": "マイクロ波化学関連事業"}
+{"doc_id": "S100Z32B", "src_sec": "92270", "raw_name": "三井物産㈱", "dst_sec": "80310", "dst_name": "三井物産株式会社", "amount": 105909000.0, "segment": "マイクロ波化学関連事業"}
+{"doc_id": "S100Z3DI", "src_sec": "603A0", "raw_name": "TLC　VPP合同会社", "dst_sec": null, "dst_name": null, "amount": 5889755000.0, "segment": "GXソリューション事業"}
+{"doc_id": "S100Z3R0", "src_sec": "95650", "raw_name": "株式会社バンダイナムコエンターテインメント", "dst_sec": null, "dst_name": null, "amount": 224587000.0, "segment": "eスポーツ事業"}
+{"doc_id": "S100Z3R0", "src_sec": "95650", "raw_name": "合同会社ライアットゲームズ", "dst_sec": null, "dst_name": null, "amount": 209517000.0, "segment": "eスポーツ事業"}
+{"doc_id": "S100Z0VF", "src_sec": "00000", "raw_name": "ＮＳスチレンモノマー㈱", "dst_sec": null, "dst_name": null, "amount": 37479000000.0, "segment": "石油化学事業"}
+{"doc_id": "S100Z0VF", "src_sec": "00000", "raw_name": "日本ポリエチレン㈱", "dst_sec": null, "dst_name": null, "amount": 35536000000.0, "segment": "石油化学事業"}
