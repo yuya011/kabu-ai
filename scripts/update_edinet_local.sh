@@ -21,6 +21,9 @@ python scripts/edinet_ingest.py --months 14
 echo "▸ 業績の組み直し（取り込んだ XBRL から・API は叩かない）"
 python scripts/extract_financials.py
 
+echo "▸ 上場市場の取り出し（有報の上場金融商品取引所名から）"
+python scripts/extract_markets.py
+
 echo "▸ 倉庫の構築（公開版・J-Quants 由来を含めない）"
 python scripts/build_warehouse.py --public
 

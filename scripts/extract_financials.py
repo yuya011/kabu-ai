@@ -33,7 +33,10 @@ OUT = RAW / "financials.jsonl"
 # 会計基準ごとに要素名が違う。同じ意味のものを順に試して、最初に取れたものを使う。
 # 銀行・保険は売上高そのものが無く、経常収益や正味収入保険料が売上に当たる。
 FIELDS = {
+    # 鉄道・電力などは「営業収益」で、要素名に番号が付く（OperatingRevenue1…）
     "sales": ("NetSalesSummaryOfBusinessResults",
+              "OperatingRevenue1SummaryOfBusinessResults",
+              "OperatingRevenue2SummaryOfBusinessResults",
               "RevenueIFRSSummaryOfBusinessResults",
               "RevenuesUSGAAPSummaryOfBusinessResults",
               "OrdinaryIncomeSummaryOfBusinessResults",
@@ -88,7 +91,7 @@ OP_ELEMENTS = ("jppfs_cor:OperatingIncome",
 # jpcrp030000-asr_E02144-000:OperatingRevenuesIFRSKeyFinancialData で出しており、
 # 名前空間に自社の EDINET コードが入るため候補として列挙できない。要素名の形で拾う。
 SALES_PATTERN = re.compile(
-    r":[A-Za-z]*(NetSales|Revenues?|OperatingRevenues?)[A-Za-z]*"
+    r":[A-Za-z]*(NetSales|Revenues?|OperatingRevenues?)[A-Za-z0-9]*"
     r"(SummaryOfBusinessResults|KeyFinancialData)$")
 
 # 推移表に売上が無い会社のための最後の受け皿。損益計算書から取るので当期と前期だけ。

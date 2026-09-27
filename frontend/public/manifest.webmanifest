@@ -1,15 +1,16 @@
 {
-  "name": "Kabu-AI 企業のつながり",
-  "short_name": "つながり",
-  "description": "有価証券報告書から、上場企業の資本と商流のつながりを辿る",
+  "name": "Keiretsu — 上場企業のつながり",
+  "short_name": "Keiretsu",
+  "description": "有価証券報告書から、上場企業の政策保有・大株主・取引のつながりを1枚のグラフに描く",
   "lang": "ja",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#f2f2f7",
-  "theme_color": "#0a84ff",
+  "background_color": "#f5f5f5",
+  "theme_color": "#4c5ec8",
   "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" },
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
     { "src": "icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }

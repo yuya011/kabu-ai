@@ -42,6 +42,11 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+try:
+    from src.name_key import match as name_match, norm as name_norm
+except ImportError:  # src/ に入って python mcp_server.py で起動したとき
+    from name_key import match as name_match, norm as name_norm
+
 # 公式 SDK は 2.0 で FastMCP を MCPServer に改名した。
 # 利用者が 1.x を固定している場合もあるので、どちらでも動くようにしておく。
 try:
@@ -224,42 +229,48 @@ def search_company(query: str, limit: int = 20) -> dict:
     limit = max(1, min(int(limit), 100))
 
     idx = _index()
-    # [証券コード, 社名, 17業種コード, 33業種名, ドメイン]。目録は上場ぶんだけで、
-    # 有報の相手方に多い非上場は入れていない。名前しか返せない先を並べても役に立たない。
+    # [証券コード, 社名, 17業種コード, 33業種名, ドメイン, 検索キー, 頭文字, 大きさ]。
+    # 目録は上場ぶんだけで、有報の相手方に多い非上場は入れていない。
+    # 名前しか返せない先を並べても役に立たない。
     nodes = idx["companies"]
     s17_name = {s["code"]: s["name"] for s in idx["sectors"]}
 
     lower = q.lower()
+    nq = name_norm(q) or re.sub(r"\s+", "", lower)
     code5 = norm_code(q)
     # 「7203」のように数字だけで来たときはコードの前方一致に倒す。
     # 社名に数字が入る会社（伊藤忠エネクス等）を数字で引くことはまず無い。
     as_code = bool(code5) and q.replace(".", "").isalnum() and any(ch.isdigit() for ch in q)
 
-    hits: list[tuple[int, list]] = []
+    # 社名は表記ゆれ・ヨミ・英字名・略称まで拾う（src/name_key.py）。
+    # 業種名の一致は社名のどの一致より下、打ち間違いの救済より上に置く
+    hits: list[tuple[tuple, list]] = []
     for n in nodes:
         c, name, s17, s33 = n[0], n[1], n[2], n[3]
         rank = None
         if as_code:
             if c == code5:
-                rank = 0
+                rank = (0, 0)
             elif c.startswith(re.sub(r"[^0-9A-Z]", "", q.upper())):
-                rank = 1
+                rank = (1, 0)
         else:
-            nl = name.lower()
-            if nl == lower:
-                rank = 0
-            elif nl.startswith(lower):
-                rank = 1
-            elif lower in nl:
-                rank = 2
+            m = name_match(nq, name_norm(name), n[5] if len(n) > 5 else "",
+                           n[6] if len(n) > 6 else "")
+            if m and m[0] < 4:
+                rank = m
             elif lower in (s33 or "").lower() or lower in (s17_name.get(s17, "")).lower():
-                rank = 3
+                rank = (4, 0)
+            elif m:
+                rank = (5, m[1])
         if rank is None:
             continue
         hits.append((rank, n))
 
-    # 一致の強さ、次に社名の短さ。「トヨタ」でトヨタ自動車が上に来る
-    hits.sort(key=lambda h: (h[0], len(h[1][1])))
+    # 打ち間違いの救済は、ほかに当たりが無いときだけ出す
+    if any(r[0] < 5 for r, _ in hits):
+        hits = [h for h in hits if h[0][0] < 5]
+    # 一致の強さ、次に会社の大きさ（資本金）、社名の短さ。「トヨタ」でトヨタ自動車が上に来る
+    hits.sort(key=lambda h: (*h[0], -(h[1][7] if len(h[1]) > 7 else 0), len(h[1][1])))
 
     out = [
         _drop_none({

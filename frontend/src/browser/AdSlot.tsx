@@ -56,8 +56,8 @@ export default function AdSlot({ slot, format = 'auto', style }: AdSlotProps) {
   if (!CLIENT) return null;
 
   return (
-    <div className="ap-ad" style={style}>
-      <div className="ap-caption" style={{ marginBottom: 4 }}>広告</div>
+    <div className="k-ad" style={style}>
+      <div className="k-caption" style={{ marginBottom: 4 }}>広告</div>
       <ins
         ref={ref}
         className="adsbygoogle"

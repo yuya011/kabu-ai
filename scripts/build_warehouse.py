@@ -121,7 +121,11 @@ def load_companies_public() -> pd.DataFrame:
     df["s17"] = df["s33"]
     df["s17_name"] = df["s33_name"]
     df["scale"] = ""
-    df["market"] = ""
+    # 市場区分は有報の「上場金融商品取引所名」から（scripts/extract_markets.py）。
+    # J-Quants と JPX の一覧は公開サイトに載せられない
+    mk = read_jsonl(RAW / "markets.jsonl")
+    by_code = dict(zip(mk.sec_code, mk.market)) if len(mk) else {}
+    df["market"] = df["sec_code"].map(by_code).fillna("")
     df["margin_type"] = ""
     cols = ["sec_code", "name", "name_en", "s17", "s17_name", "s33", "s33_name",
             "scale", "market", "margin_type", "formal_name", "edinet_code",

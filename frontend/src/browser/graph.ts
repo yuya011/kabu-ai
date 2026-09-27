@@ -8,6 +8,12 @@ export interface NodeRec {
   domain: string;
   /** 0=上場 1=EDINET登録の非上場 2=名前のみ。中心に置けるのは 0 だけ */
   kind: number;
+  /** 検索キー。ヨミ・英字名・略記・通称（空白区切り、norm 済み） */
+  keys?: string;
+  /** 完全一致だけで引く検索キー。英字の頭文字 */
+  exact?: string;
+  /** 資本金の常用対数×10。検索で同じ強さの一致が並んだとき大きい会社を上に出す */
+  size?: number;
 }
 
 export interface Adj {

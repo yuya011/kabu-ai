@@ -140,14 +140,13 @@ export function applySettings(s: Settings = current) {
   const theme = resolveTheme(s.theme);
   root.dataset.theme = theme;
   root.style.colorScheme = theme;
-  // 検証ダッシュボードは Tailwind の dark: を見るので、そちらにも合わせる
-  root.classList.toggle('dark', theme === 'dark');
   root.style.setProperty('--fs', String(s.fontScale));
   if (s.reduceMotion) root.dataset.motion = 'reduce';
   else delete root.dataset.motion;
-  // iOS はここを見て、ホーム画面から起動したときの上下の帯を塗る
+  // iOS はここを見て、ホーム画面から起動したときの上下の帯を塗る。
+  // Fluent の colorNeutralBackground3（ヘッダーの地）と揃える
   document.querySelector('meta[name="theme-color"]')
-    ?.setAttribute('content', theme === 'dark' ? '#000000' : '#f2f2f7');
+    ?.setAttribute('content', theme === 'dark' ? '#141414' : '#f5f5f5');
 }
 
 /* OS 側の配色が変わったら、自動のときだけ追随する */

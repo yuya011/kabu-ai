@@ -11,6 +11,10 @@
 const DB_NAME = 'kabu-ai-cache';
 const STORE = 'json';
 const INDEX_TTL_MS = 6 * 60 * 60 * 1000; // index.json だけは時間で見に行く
+/* 配信 JSON の形の版。書き出しに項目を足して画面がそれを読むようになったら上げる。
+   index.json は6時間使い回すので、上げないと公開直後の画面が古い形の索引を読み、
+   新しい項目が無いまま描いてしまう（市場の社数が全部 0 に見えた）。 */
+const SCHEMA = 2;
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 let version: string | null = null;
@@ -52,12 +56,12 @@ const get = <T>(key: string) => tx<T>('readonly', (s) => s.get(key));
 const put = (key: string, val: unknown) => tx('readwrite', (s) => s.put(val, key));
 const clearAll = () => tx('readwrite', (s) => s.clear());
 
-interface Entry { v: string | null; t: number; d: unknown; }
+interface Entry { v: string | null; t: number; d: unknown; s?: number; }
 
 /** 版つきキャッシュ。版が一致すればネットワークに出ない。 */
 export async function fetchJSON<T = any>(url: string): Promise<T> {
   const hit = await get<Entry>(url);
-  if (hit && hit.v === version) return hit.d as T;
+  if (hit && hit.v === version && hit.s === SCHEMA) return hit.d as T;
 
   const res = await fetch(url);
   if (!res.ok) {
@@ -65,14 +69,14 @@ export async function fetchJSON<T = any>(url: string): Promise<T> {
     throw new Error(`${url} ${res.status}`);
   }
   const data = (await res.json()) as T;
-  put(url, { v: version, t: Date.now(), d: data } satisfies Entry);
+  put(url, { v: version, t: Date.now(), d: data, s: SCHEMA } satisfies Entry);
   return data;
 }
 
 /** index.json を読み、その生成時刻を全体の版として据える。 */
 export async function loadIndex<T extends { meta: { generated_at: string } }>(url: string): Promise<T> {
   const hit = await get<Entry>(url);
-  const fresh = hit && Date.now() - hit.t < INDEX_TTL_MS;
+  const fresh = hit && hit.s === SCHEMA && Date.now() - hit.t < INDEX_TTL_MS;
   if (fresh) {
     version = hit!.v;
     return hit!.d as T;
@@ -89,12 +93,12 @@ export async function loadIndex<T extends { meta: { generated_at: string } }>(ur
   }
 
   const next = data.meta.generated_at;
-  if (hit && hit.v !== next) {
+  if (hit && (hit.v !== next || hit.s !== SCHEMA)) {
     // 作り直された。混ざると厄介なので古い中身は全部捨てる
     await clearAll();
   }
   version = next;
-  put(url, { v: next, t: Date.now(), d: data } satisfies Entry);
+  put(url, { v: next, t: Date.now(), d: data, s: SCHEMA } satisfies Entry);
   return data;
 }
 

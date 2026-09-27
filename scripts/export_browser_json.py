@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.edinet_client import (  # noqa: E402
     norm as ec_norm, core_name as ec_core, is_shareholder_noise, latest_codelist,
 )
+from src.name_key import search_keys  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "kabu.duckdb"
@@ -238,6 +239,14 @@ def clean(o):
     return o
 
 
+MARKET_BUCKETS = {"プライム": "prime", "スタンダード": "standard", "グロース": "growth"}
+
+
+def market_bucket(m) -> str:
+    """市場区分を画面の絞り込みの4区分に寄せる。"""
+    return MARKET_BUCKETS.get(m, "other")
+
+
 def write(path: Path, obj):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(clean(obj), ensure_ascii=False, separators=(",", ":")),
@@ -317,7 +326,8 @@ def main():
     # ---- 相手方を上場・非上場の別で名寄せし直す ----
     # 取り込み時は上場企業にしか名寄せしていなかったため、非上場が相手のエッジを
     # 捨てていた。ここで解決し直すことで、再取得なしに非上場ノードを足せる。
-    resolver = EntityResolver(latest_codelist(), filings)
+    codelist = latest_codelist()
+    resolver = EntityResolver(codelist, filings)
     extra_nodes = {}
 
     def resolve_into(df, raw_col, id_col, name_col, drop_noise=False):
@@ -581,8 +591,35 @@ def main():
             "measured": len(pcts),
             "median_pctile": round(float(np.median(pcts)), 3) if pcts else None,
             "markets": g.market.value_counts().to_dict(),
+            # 市場ごとの [社数, 営業利益率の中央値]。画面で市場を絞ったときに出す。
+            # 地方の取引所・TOKYO PRO Market・市場の読めない会社は other にまとめる
+            "by_market": {
+                b: [len(gm), round(float(np.median(ms)), 4) if ms else None]
+                for b, gm in g.groupby(g.market.map(market_bucket))
+                for ms in [[summaries[c]["op_margin"] for c in gm.sec_code
+                            if summaries[c]["op_margin"] is not None]]
+            },
         })
     sectors.sort(key=lambda x: -x["count"])
+
+    # 検索キー。ヨミと英字社名はコードリストにしか無い。上場は証券コード、
+    # EDINET 登録の非上場は EDINET コードで引く。名前だけの相手方には何も付かない
+    by_id = {}
+    for sec, ecode, yomi, en in zip(codelist["証券コード"], codelist["ＥＤＩＮＥＴコード"],
+                                    codelist["提出者名（ヨミ）"], codelist["提出者名（英字）"]):
+        pair = (yomi if isinstance(yomi, str) else "", en if isinstance(en, str) else "")
+        if isinstance(sec, str) and sec:
+            by_id.setdefault(sec, pair)
+        by_id.setdefault(ecode, pair)
+
+    def keys_for(nid, name, capital=None):
+        loose, exact = search_keys(nid, name, *by_id.get(nid, ("", "")))
+        # 資本金（百万円）の常用対数×10。検索で同じ強さの一致が並んだとき大きい会社を上に出す。
+        # 「トヨタ」でトヨタ紡織・豊田通商よりトヨタ自動車を先にするため
+        cap = num(capital)
+        if cap and cap > 0:
+            return [loose, exact, max(0, round(math.log10(cap) * 10))]
+        return [loose, exact] if exact else [loose] if loose else []
 
     index = {
         "meta": {
@@ -608,10 +645,13 @@ def main():
         # 全ノードの軽量な目録。検索とグラフのラベル/ファビコンをこれ1本で賄う。
         # 末尾は種別で、0=上場 1=EDINET登録の非上場 2=名前のみ。
         # 中心に置けるのは 0 だけだが、相手方としては 1,2 も描く。
+        # 種別の後ろに検索キーが続くことがある（ヨミ・英字名・通称、英字の頭文字、会社の大きさ）。
         "nodes": ([[c.sec_code, c.name, c.s17, c.s33_name,
-                    domain_by_code.get(c.sec_code) or "", 0]
+                    domain_by_code.get(c.sec_code) or "", 0,
+                    *keys_for(c.sec_code, c.name, c.capital)]
                    for c in companies.itertuples()]
-                  + [[nid, rec["name"], "", rec.get("industry") or "", "", rec["kind"]]
+                  + [[nid, rec["name"], "", rec.get("industry") or "", "", rec["kind"],
+                      *keys_for(nid, rec["name"])]
                      for nid, rec in sorted(extra_nodes.items())]),
         "markets": [{"name": k, "count": int(v)}
                     for k, v in companies.market.value_counts().items()],
@@ -706,8 +746,8 @@ def write_mcp(index, summaries, details):
     MCP で名前しか返せない相手を並べても役に立たないので、上場ぶんだけにする。
     """
     meta = {**index["meta"], "sources": index["sources"]}
-    # 目録。[コード, 社名, 17業種コード, 33業種名, ドメイン]
-    listed = [[n[0], n[1], n[2], n[3], n[4]] for n in index["nodes"] if n[5] == 0]
+    # 目録。[コード, 社名, 17業種コード, 33業種名, ドメイン, 検索キー, 頭文字, 大きさ]
+    listed = [[n[0], n[1], n[2], n[3], n[4], *n[6:]] for n in index["nodes"] if n[5] == 0]
     total = write(MCP_OUT / "index.json", {
         "meta": meta,
         "sectors": [{"code": s["code"], "name": s["name"], "count": s["count"]}

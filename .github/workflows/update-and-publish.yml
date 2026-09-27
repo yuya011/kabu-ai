@@ -137,7 +137,6 @@ jobs:
         working-directory: frontend
         env:
           VITE_BASE: ${{ steps.site.outputs.base }}
-          VITE_PUBLIC: '1'
           # 閲覧統計の送り先。未設定なら何も送らない（worker/ を参照）
           VITE_ANALYTICS_URL: https://kabu-stats.yuya011.workers.dev
           # AdSense の発行元ID。未設定なら広告の枠そのものを描かない

@@ -197,6 +197,8 @@ export interface SectorTile {
   measured: number;
   median_pctile: number | null;
   markets: Record<string, number>;
+  /** 市場ごとの [社数, 営業利益率の中央値]。キーは prime / standard / growth / other */
+  by_market?: Record<string, [number, number | null]>;
 }
 
 export interface SectorFile {

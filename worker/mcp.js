@@ -26,6 +26,7 @@
  */
 
 import { CORS, json } from './util.js';
+import { match as nameMatch, norm as nameNorm } from './nameKey.js';
 
 /* 話せる版。2026-07-28 で仕様が大きく変わり、2つの世代が併存している。
  *
@@ -184,6 +185,14 @@ const TOOLS = [
   },
 ];
 
+/* 社名の norm は全社ぶん毎回かけると Worker の CPU 時間を食うので、隔離環境が生きている間は控える */
+const NORMED = new Map();
+function normName(name) {
+  let v = NORMED.get(name);
+  if (v === undefined) { v = nameNorm(name); NORMED.set(name, v); }
+  return v;
+}
+
 async function searchCompany(env, { query, limit = 20 }) {
   const q = String(query ?? '').trim();
   if (!q) return { error: 'query が空です' };
@@ -192,29 +201,35 @@ async function searchCompany(env, { query, limit = 20 }) {
   const idx = await load(env, 'index.json');
   const s17Name = new Map(idx.sectors.map((s) => [s.code, s.name]));
   const lower = q.toLowerCase();
+  const nq = nameNorm(q) || lower.replace(/\s+/g, '');
   const code5 = normCode(q);
   // 数字だけで来たときはコードの前方一致に倒す。社名を数字で引くことはまず無い
   const asCode = !!code5 && /^[0-9A-Za-z.]+$/.test(q) && /[0-9]/.test(q);
   const bare = q.toUpperCase().replace(/[^0-9A-Z]/g, '');
 
-  const hits = [];
+  // 社名は表記ゆれ・ヨミ・英字名・略称まで拾う（nameKey.js）。
+  // 業種名の一致は社名のどの一致より下、打ち間違いの救済より上に置く
+  let hits = [];
   for (const row of idx.companies) {
-    const [c, name, s17, s33] = row;
+    const [c, name, s17, s33, , loose, exact] = row;
     let rank = null;
     if (asCode) {
-      if (c === code5) rank = 0;
-      else if (c.startsWith(bare)) rank = 1;
+      if (c === code5) rank = [0, 0];
+      else if (c.startsWith(bare)) rank = [1, 0];
     } else {
-      const nl = name.toLowerCase();
-      if (nl === lower) rank = 0;
-      else if (nl.startsWith(lower)) rank = 1;
-      else if (nl.includes(lower)) rank = 2;
+      const m = nameMatch(nq, normName(name), loose, exact);
+      if (m && m[0] < 4) rank = m;
       else if ((s33 || '').toLowerCase().includes(lower)
-               || (s17Name.get(s17) || '').toLowerCase().includes(lower)) rank = 3;
+               || (s17Name.get(s17) || '').toLowerCase().includes(lower)) rank = [4, 0];
+      else if (m) rank = [5, m[1]];
     }
     if (rank !== null) hits.push([rank, row]);
   }
-  hits.sort((a, b) => a[0] - b[0] || a[1][1].length - b[1][1].length);
+  // 打ち間違いの救済は、ほかに当たりが無いときだけ出す
+  if (hits.some(([r]) => r[0] < 5)) hits = hits.filter(([r]) => r[0] < 5);
+  // 一致の強さ、次に会社の大きさ（資本金）、社名の短さ
+  hits.sort((a, b) => a[0][0] - b[0][0] || a[0][1] - b[0][1]
+                      || (b[1][7] ?? 0) - (a[1][7] ?? 0) || a[1][1].length - b[1][1].length);
 
   return {
     query: q,
